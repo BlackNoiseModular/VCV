@@ -1,0 +1,23 @@
+{
+  "slug": "BlackNoiseModular",
+  "name": "BlackNoiseModular",
+  "version": "2.0.0",
+  "license": "proprietary",
+  "brand": "BlackNoiseModular",
+  "author": "Alexandre Simon, Ewan Hemingway",
+  "authorEmail": "",
+  "authorUrl": "",
+  "pluginUrl": "",
+  "manualUrl": "",
+  "sourceUrl": "",
+  "donateUrl": "",
+  "changelogUrl": "",
+  "modules": [
+    {
+      "slug": "Cosmos",
+      "name": "Cosmos",
+      "description": "",
+      "tags": []
+    }
+  ]
+}
