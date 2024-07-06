@@ -56,6 +56,14 @@ struct Cosmos : Module {
 		LIGHTS_LEN
 	};
 
+	dsp::TSchmittTrigger<float_4> logicalOrSchmitt[4];
+	dsp::TSchmittTrigger<float_4> logicalAndSchmitt[4];
+	dsp::TSchmittTrigger<float_4> logicalXorSchmitt[4];
+
+	PulseGenerator_4 logicalOrTrigger[4];
+	PulseGenerator_4 logicalAndTrigger[4];
+	PulseGenerator_4 logicalXorTrigger[4];
+
 	Cosmos() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(PAD_X_PARAM, 0.f, 1.f, 0.f, "");
@@ -104,11 +112,37 @@ struct Cosmos : Module {
 			outputs[SUM_OUTPUT].setVoltageSimd<float_4>(x + y, c);
 			outputs[DIFF_OUTPUT].setVoltageSimd<float_4>(x - y, c);
 
-			outputs[MAX_OUTPUT].setVoltageSimd<float_4>(ifelse(x > y, x, y), c);
-			outputs[MIN_OUTPUT].setVoltageSimd<float_4>(ifelse(x > y, y, x), c);
+			const float_4 analogueOr = ifelse(x > y, x, y);
+			outputs[MAX_OUTPUT].setVoltageSimd<float_4>(analogueOr, c);
+			const float_4 analogueAnd = ifelse(x > y, y, x);
+			outputs[MIN_OUTPUT].setVoltageSimd<float_4>(analogueAnd, c);
+
+			const float_4 sign_x = ifelse(x < 0, -1.f, 1.f);
+			const float_4 analogueXor = ifelse(abs(y) < abs(x), -y * sign_x, ifelse(y < 0, x, -x)); 
+			outputs[TZ_CLIPPER_OUTPUT].setVoltageSimd<float_4>(analogueXor, c);
 
 			outputs[INV_X_OUTPUT].setVoltageSimd<float_4>(-x, c);
 			outputs[INV_Y_OUTPUT].setVoltageSimd<float_4>(-y, c);
+
+			// gate/trigger outputs
+			const float_4 orTrig = logicalOrSchmitt[c].process(analogueOr);
+			logicalOrTrigger[c].trigger(orTrig, 1e-3);
+			const float_4 orTriggerHigh = logicalOrTrigger[c].process(args.sampleTime);
+			outputs[OR_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalOrSchmitt[c].isHigh(), 10.f, 0.f), c);
+			outputs[ORG_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(orTriggerHigh, 10.f, 0.f), c);
+
+			const float_4 andTrig = logicalAndSchmitt[c].process(analogueAnd);
+			logicalAndTrigger[c].trigger(andTrig, 1e-3);
+			const float_4 andTriggerHigh = logicalAndTrigger[c].process(args.sampleTime);
+			outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalAndSchmitt[c].isHigh(), 10.f, 0.f), c);
+			outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(andTriggerHigh, 10.f, 0.f), c);
+
+			const float_4 xorTrig = logicalXorSchmitt[c].process(analogueXor);
+			logicalXorTrigger[c].trigger(xorTrig, 1e-3);
+			const float_4 xorTriggerHigh = logicalXorTrigger[c].process(args.sampleTime);
+			outputs[XOR_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalXorSchmitt[c].isHigh(), 10.f, 0.f), c);
+			outputs[XOR_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(xorTriggerHigh, 10.f, 0.f), c);
+			
 		}
 
 		outputs[X_OUTPUT].setChannels(numActivePolyphonyChannels);
