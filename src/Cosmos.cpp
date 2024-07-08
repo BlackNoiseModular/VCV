@@ -41,22 +41,23 @@ struct Cosmos : Module {
 		OUTPUTS_LEN
 	};
 	enum LightId {
-		XOR_LIGHT,
-		MAX_LIGHT,
-		MIN_LIGHT,
-		SUM_LIGHT,
-		X_LIGHT,
-		Y_LIGHT,
-		INV_X_LIGHT,
-		INV_Y_LIGHT,
-		DIFF_LIGHT,
-		INV_MAX_LIGHT,
-		INV_MIN_LIGHT,
-		XNOR_LIGHT,
+		ENUMS(XOR_LIGHT, 3),
+		ENUMS(OR_LIGHT, 3),
+		ENUMS(AND_LIGHT, 3),
+		ENUMS(SUM_LIGHT, 3),
+		ENUMS(X_LIGHT, 3),
+		ENUMS(Y_LIGHT, 3),
+		ENUMS(INV_X_LIGHT, 3),
+		ENUMS(INV_Y_LIGHT, 3),
+		ENUMS(DIFF_LIGHT, 3),
+		ENUMS(NOR_LIGHT, 3),
+		ENUMS(NAND_LIGHT, 3),
+		ENUMS(XNOR_LIGHT, 3),
 		LIGHTS_LEN
 	};
 
-	// for boolean gates
+
+	// for boolean gates (unused for now)
 	dsp::TSchmittTrigger<float_4> logicalOrSchmitt[4];
 	dsp::TSchmittTrigger<float_4> logicalAndSchmitt[4];
 	dsp::TSchmittTrigger<float_4> logicalXorSchmitt[4];
@@ -66,12 +67,19 @@ struct Cosmos : Module {
 	dsp::TSchmittTrigger<float_4> logicalXNorSchmitt[4];
 
 	// for outputting triggers
-	PulseGenerator_4 logicalOrTrigger[4];
-	PulseGenerator_4 logicalAndTrigger[4];
-	PulseGenerator_4 logicalXorTrigger[4];
-	PulseGenerator_4 logicalNorTrigger[4];
-	PulseGenerator_4 logicalNandTrigger[4];
-	PulseGenerator_4 logicalXnorTrigger[4];
+	PulseGenerator_4 logicalOrPulseGenerator[4];
+	PulseGenerator_4 logicalAndPulseGenerator[4];
+	PulseGenerator_4 logicalXorPulseGenerator[4];
+	PulseGenerator_4 logicalNorPulseGenerator[4];
+	PulseGenerator_4 logicalNandPulseGenerator[4];
+	PulseGenerator_4 logicalXnorPulseGenerator[4];
+
+	BooleanTrigger_4 logicalOrGate[4];
+	BooleanTrigger_4 logicalAndGate[4];
+	BooleanTrigger_4 logicalXorGate[4];
+	BooleanTrigger_4 logicalNorGate[4];
+	BooleanTrigger_4 logicalNandGate[4];
+	BooleanTrigger_4 logicalXnorGate[4];
 
 	Cosmos() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
@@ -108,10 +116,6 @@ struct Cosmos : Module {
 	void process(const ProcessArgs& args) override {
 
 		const int numActivePolyphonyChannels = std::max({1, inputs[X_INPUT].getChannels(), inputs[Y_INPUT].getChannels()});
-		
-		// schmitt trigger thresholds - normally high threshold is greater that low (to get hystersis) but then boolean gate outs aren't perfect inverted copies
-		const float lowThreshold = 0.1;
-		const float highThreshold = 1.0;
 
 		for (int c = 0; c < numActivePolyphonyChannels; c += 4) {
 
@@ -125,32 +129,37 @@ struct Cosmos : Module {
 
 			const float_4 analogueOr = ifelse(x > y, x, y);
 			const float_4 analogueAnd = ifelse(x > y, y, x);
-			const float_4 sign_x = ifelse(x < 0, -1.f, 1.f);
-			const float_4 analogueXor = ifelse(abs(y) < abs(x), -y * sign_x, ifelse(y < 0, x, -x)); 
+			const float_4 clip_x = ifelse(x > abs(y), abs(y), ifelse(x < -abs(y), -abs(y), x));
+			// note: x == 0 and y == 0 are special cases
+			const float_4 analogueXor = ifelse(x == 0, y, ifelse(y > 0, -clip_x, ifelse(y < 0, clip_x, x)));
 
 			outputs[OR_OUTPUT].setVoltageSimd<float_4>(analogueOr, c);
 			outputs[AND_OUTPUT].setVoltageSimd<float_4>(analogueAnd, c);
 			outputs[TZ_CLIPPER_OUTPUT].setVoltageSimd<float_4>(analogueXor, c);
 
 			// gate/trigger outputs
-			const float_4 orTrig = logicalOrSchmitt[c].process(analogueOr, lowThreshold, highThreshold);
-			logicalOrTrigger[c].trigger(orTrig, 1e-3);
-			const float_4 orTriggerHigh = logicalOrTrigger[c].process(args.sampleTime);
-			outputs[OR_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalOrSchmitt[c].isHigh(), 10.f, 0.f), c);
-			outputs[OR_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(orTriggerHigh, 10.f, 0.f), c);
+			{
+				const float_4 orGateOut = ifelse(analogueOr > 0, 10.f, 0.f);
+				const float_4 orTriggerHigh = logicalOrGate[c].process(analogueOr > 0);
+				logicalOrPulseGenerator[c].trigger(orTriggerHigh, 1e-3);
+				const float_4 orTriggerOut = ifelse(logicalOrPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+				outputs[OR_GATE_OUTPUT].setVoltageSimd<float_4>(orGateOut, c);
+				outputs[OR_TRIG_OUTPUT].setVoltageSimd<float_4>(orTriggerOut, c);
 
-			const float_4 andTrig = logicalAndSchmitt[c].process(analogueAnd, lowThreshold, highThreshold);
-			logicalAndTrigger[c].trigger(andTrig, 1e-3);
-			const float_4 andTriggerHigh = logicalAndTrigger[c].process(args.sampleTime);
-			outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalAndSchmitt[c].isHigh(), 10.f, 0.f), c);
-			outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(andTriggerHigh, 10.f, 0.f), c);
+				const float_4 andGateOut = ifelse(analogueAnd > 0, 10.f, 0.f);
+				const float_4 andTriggerHigh = logicalAndGate[c].process(analogueAnd > 0);
+				logicalAndPulseGenerator[c].trigger(andTriggerHigh, 1e-3);
+				const float_4 andTriggerOut = ifelse(logicalAndPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+				outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(andGateOut, c);
+				outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(andTriggerOut, c);
 
-			const float_4 xorTrig = logicalXorSchmitt[c].process(analogueXor, lowThreshold, highThreshold);
-			logicalXorTrigger[c].trigger(xorTrig, 1e-3);
-			const float_4 xorTriggerHigh = logicalXorTrigger[c].process(args.sampleTime);
-			outputs[XOR_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalXorSchmitt[c].isHigh(), 10.f, 0.f), c);
-			outputs[XOR_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(xorTriggerHigh, 10.f, 0.f), c);
-
+				const float_4 xorGateOut = ifelse(analogueXor > 0, 10.f, 0.f);
+				const float_4 xorTriggerHigh = logicalXorGate[c].process(analogueXor > 0);
+				logicalXorPulseGenerator[c].trigger(xorTriggerHigh, 1e-3);
+				const float_4 xorTriggerOut = ifelse(logicalXorPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+				outputs[XOR_GATE_OUTPUT].setVoltageSimd<float_4>(xorGateOut, c);
+				outputs[XOR_TRIG_OUTPUT].setVoltageSimd<float_4>(xorTriggerOut, c);
+			}
 
 			// inverse outputs
 			outputs[INV_X_OUTPUT].setVoltageSimd<float_4>(-x, c);
@@ -164,27 +173,58 @@ struct Cosmos : Module {
 			outputs[NAND_OUTPUT].setVoltageSimd<float_4>(analogueNand, c);
 			outputs[INV_TZ_CLIPPER_OUTPUT].setVoltageSimd<float_4>(analogueXnor, c);
 
-			const float_4 norTrig = logicalNorSchmitt[c].process(analogueNor, lowThreshold, highThreshold);
-			logicalNorTrigger[c].trigger(norTrig, 1e-3);
-			const float_4 norTriggerHigh = logicalNorTrigger[c].process(args.sampleTime);
-			outputs[NOR_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalOrSchmitt[c].isHigh(), 10.f, 0.f), c);
-			outputs[NOR_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(norTriggerHigh, 10.f, 0.f), c);
+			// inverse gate/trigger outputs
+			{
+				const float_4 norGateOut = ifelse(analogueNor < 0, 0.f, 10.f);
+				const float_4 norTriggerHigh = logicalNorGate[c].process(analogueNor < 0);
+				logicalNorPulseGenerator[c].trigger(norTriggerHigh, 1e-3);
+				const float_4 norTriggerOut = ifelse(logicalNorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
+				outputs[NOR_GATE_OUTPUT].setVoltageSimd<float_4>(norGateOut, c);
+				outputs[NOR_TRIG_OUTPUT].setVoltageSimd<float_4>(norTriggerOut, c);
 
-			const float_4 nandTrig = logicalNandSchmitt[c].process(analogueNand, lowThreshold, highThreshold);
-			logicalNandTrigger[c].trigger(nandTrig, 1e-3);
-			const float_4 nandTriggerHigh = logicalNandTrigger[c].process(args.sampleTime);
-			outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalNandSchmitt[c].isHigh(), 10.f, 0.f), c);
-			outputs[NAND_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(nandTriggerHigh, 10.f, 0.f), c);
+				const float_4 nandGateOut = ifelse(analogueNand < 0, 0.f, 10.f);
+				const float_4 nandTriggerHigh = logicalNandGate[c].process(analogueNand < 0);
+				logicalNandPulseGenerator[c].trigger(nandTriggerHigh, 1e-3);
+				const float_4 nandTriggerOut = ifelse(logicalNandPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
+				outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
+				outputs[NAND_TRIG_OUTPUT].setVoltageSimd<float_4>(nandTriggerOut, c);
 
-			const float_4 xnorTrig = logicalXNorSchmitt[c].process(analogueXnor, lowThreshold, highThreshold);
-			logicalXnorTrigger[c].trigger(xnorTrig, 1e-3);
-			const float_4 xnorTriggerHigh = logicalXnorTrigger[c].process(args.sampleTime);
-			outputs[XNOR_GATE_OUTPUT].setVoltageSimd<float_4>(ifelse(logicalXNorSchmitt[c].isHigh(), 10.f, 0.f), c);
-			outputs[XNOR_TRIG_OUTPUT].setVoltageSimd<float_4>(ifelse(xnorTriggerHigh, 10.f, 0.f), c);
+				const float_4 xnorGateOut = ifelse(analogueXnor < 0, 0.f, 10.f);
+				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(analogueXnor < 0);
+				logicalXnorPulseGenerator[c].trigger(xnorTriggerHigh, 1e-3);
+				const float_4 xnorTriggerOut = ifelse(logicalXnorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
+				outputs[XNOR_GATE_OUTPUT].setVoltageSimd<float_4>(xnorGateOut, c);
+				outputs[XNOR_TRIG_OUTPUT].setVoltageSimd<float_4>(xnorTriggerOut, c);
+
+			}
+		}
+
+		if (numActivePolyphonyChannels == 1) {
+			setRedGreenLED(OR_LIGHT, outputs[OR_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(AND_LIGHT, outputs[AND_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(XOR_LIGHT, outputs[TZ_CLIPPER_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(SUM_LIGHT, outputs[SUM_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(X_LIGHT, outputs[X_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(Y_LIGHT, outputs[Y_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(DIFF_LIGHT, outputs[DIFF_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(INV_X_LIGHT, outputs[INV_X_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(INV_Y_LIGHT, outputs[INV_Y_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(NOR_LIGHT, outputs[NOR_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(NAND_LIGHT, outputs[NAND_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(XNOR_LIGHT, outputs[INV_TZ_CLIPPER_OUTPUT].getVoltage(), args.sampleTime);
+		}
+		else {
+			// TODO: handle polyphonic lights
 		}
 
 		outputs[X_OUTPUT].setChannels(numActivePolyphonyChannels);
 		outputs[Y_OUTPUT].setChannels(numActivePolyphonyChannels);
+	}
+
+	void setRedGreenLED(int firstLightId, float value, float deltaTime) {
+		lights[firstLightId + 0].setBrightnessSmooth(value < 0 ? -value / 10.f : 0.f, deltaTime); 	// red
+		lights[firstLightId + 1].setBrightnessSmooth(value > 0 ? +value / 10.f : 0.f, deltaTime);	// green
+		lights[firstLightId + 2].setBrightness(0.f);												// blue
 	}
 };
 
@@ -230,18 +270,18 @@ struct CosmosWidget : ModuleWidget {
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.677, 114.371)), module, Cosmos::XNOR_GATE_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.981, 114.361)), module, Cosmos::XNOR_TRIG_OUTPUT));
 
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(35.331, 29.793)), module, Cosmos::XOR_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(26.279, 39.23)), module, Cosmos::MAX_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(44.376, 39.23)), module, Cosmos::MIN_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(35.3, 54.892)), module, Cosmos::SUM_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(29.372, 59.528)), module, Cosmos::X_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(41.292, 59.528)), module, Cosmos::Y_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(29.372, 69.052)), module, Cosmos::INV_X_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(41.292, 69.052)), module, Cosmos::INV_Y_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(35.3, 73.688)), module, Cosmos::DIFF_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(26.279, 89.35)), module, Cosmos::INV_MAX_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(44.376, 89.35)), module, Cosmos::INV_MIN_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(35.331, 98.787)), module, Cosmos::XNOR_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.331, 29.793)), module, Cosmos::XOR_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(26.279, 39.23)), module, Cosmos::OR_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(44.376, 39.23)), module, Cosmos::AND_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.3, 54.892)), module, Cosmos::SUM_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(29.372, 59.528)), module, Cosmos::X_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(41.292, 59.528)), module, Cosmos::Y_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(29.372, 69.052)), module, Cosmos::INV_X_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(41.292, 69.052)), module, Cosmos::INV_Y_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.3, 73.688)), module, Cosmos::DIFF_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(26.279, 89.35)), module, Cosmos::NOR_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(44.376, 89.35)), module, Cosmos::NAND_LIGHT));
+		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.331, 98.787)), module, Cosmos::XNOR_LIGHT));
 	}
 };
 

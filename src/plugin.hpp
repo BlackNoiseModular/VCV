@@ -34,3 +34,13 @@ struct PulseGenerator_4 {
 		remaining = ifelse(mask & (duration > remaining), duration, remaining);
 	}
 };
+
+struct BooleanTrigger_4 {
+    simd::float_4 previousMask = 0.f;
+
+    simd::float_4 process(simd::float_4 mask) {
+        simd::float_4 result = simd::andnot(previousMask, mask);
+        previousMask = mask;
+        return result;
+    }
+};
