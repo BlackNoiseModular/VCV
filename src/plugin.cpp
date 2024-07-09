@@ -9,5 +9,6 @@ void init(Plugin* p) {
 
 	// Add modules here
 	p->addModel(modelCosmos);
-	
+	p->addModel(modelGomaII);
+	p->addModel(modelSlewLFO);
 }

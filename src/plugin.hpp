@@ -9,6 +9,8 @@ extern Plugin* pluginInstance;
         
 // Declare each Model, defined in each module source file
 extern Model* modelCosmos;
+extern Model* modelGomaII;
+extern Model* modelSlewLFO;
 
 /** When triggered, holds a high value for a specified time before going low again */
 struct PulseGenerator_4 {
