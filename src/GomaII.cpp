@@ -45,10 +45,10 @@ struct GomaII : Module {
 		configParam(GAIN_CH2_PARAM, 0.f, 1.f, 0.f, "Gain (Channel 2)", "%");
 		configParam(GAIN_CH3_PARAM, 0.f, 1.f, 0.f, "Gain (Channel 3)", "%");
 
-		configSwitch(MODE_EXT_PARAM, 0.f, 1.f, 0.f, "Mode (Channel Ext)", {"Attenuverter", "Attenuator"});
-		configSwitch(MODE_CH1_PARAM, 0.f, 1.f, 0.f, "Mode (Channel 1)", {"Attenuverter", "Attenuator"});
-		configSwitch(MODE_CH2_PARAM, 0.f, 1.f, 0.f, "Mode (Channel 2)", {"Attenuverter", "Attenuator"});
-		configSwitch(MODE_CH3_PARAM, 0.f, 1.f, 0.f, "Mode (Channel 3)", {"Attenuverter", "Attenuator"});
+		configSwitch(MODE_EXT_PARAM, 0.f, 1.f, 1.f, "Mode (Channel Ext)", {"Attenuverter", "Attenuator"});
+		configSwitch(MODE_CH1_PARAM, 0.f, 1.f, 1.f, "Mode (Channel 1)", {"Attenuverter", "Attenuator"});
+		configSwitch(MODE_CH2_PARAM, 0.f, 1.f, 1.f, "Mode (Channel 2)", {"Attenuverter", "Attenuator"});
+		configSwitch(MODE_CH3_PARAM, 0.f, 1.f, 1.f, "Mode (Channel 3)", {"Attenuverter", "Attenuator"});
 
 		configInput(EXT_INPUT, "External");
 		configInput(CH1_INPUT, "Channel 1");
