@@ -1,4 +1,5 @@
 #include "plugin.hpp"
+#include "ChowDSP.hpp"
 
 using namespace simd;
 
@@ -81,12 +82,22 @@ struct Cosmos : Module {
 	BooleanTrigger_4 logicalNandGate[4];
 	BooleanTrigger_4 logicalXnorGate[4];
 
+	// oversampling
+	chowdsp::VariableOversampling<6, float_4> oversampler[OUTPUTS_LEN][4]; 	// uses a 2*6=12th order Butterworth filter
+	int oversamplingIndex = 2; 	// default is 2^oversamplingIndex == x4 oversampling
+	bool oversampleLogicOutputs = true;
+	bool oversampleLogicGateOutputs = false;
+	bool oversampleLogicTriggerOutputs = false;
+
+
 	Cosmos() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(PAD_X_PARAM, 0.f, 1.f, 0.f, "Pad X");
 		configParam(PAD_Y_PARAM, 0.f, 1.f, 0.f, "Pad Y");
+
 		configInput(X_INPUT, "X");
 		configInput(Y_INPUT, "Y");
+
 		configOutput(XOR_GATE_OUTPUT, "XOR gate");
 		configOutput(XOR_TRIG_OUTPUT, "XOR trigger");
 		configOutput(TZ_CLIPPER_OUTPUT, "Through-zero clipper");
@@ -111,6 +122,19 @@ struct Cosmos : Module {
 		configOutput(INV_TZ_CLIPPER_OUTPUT, "Ternary clipper (inverted)");
 		configOutput(XNOR_GATE_OUTPUT, "XNOR gate");
 		configOutput(XNOR_TRIG_OUTPUT, "XNOR trigger");
+
+		// calculate up/downsampling rates
+		onSampleRateChange();
+	}
+
+	void onSampleRateChange() override {
+		float sampleRate = APP->engine->getSampleRate();
+		for (int c = 0; c < OUTPUTS_LEN; c++) {
+			for (int i = 0; i < 4; i++) {
+				oversampler[c][i].setOversamplingIndex(oversamplingIndex);
+				oversampler[c][i].reset(sampleRate);
+			}
+		}
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -119,8 +143,8 @@ struct Cosmos : Module {
 
 		for (int c = 0; c < numActivePolyphonyChannels; c += 4) {
 
-			const float_4 x = inputs[X_INPUT].getPolyVoltage(c);
-			const float_4 y = inputs[Y_INPUT].getPolyVoltage(c);
+			const float_4 x = inputs[X_INPUT].getPolyVoltageSimd<float_4>(c);
+			const float_4 y = inputs[Y_INPUT].getPolyVoltageSimd<float_4>(c);
 
 			// main outputs
 			outputs[X_OUTPUT].setVoltageSimd<float_4>(x, c);
@@ -130,8 +154,7 @@ struct Cosmos : Module {
 			const float_4 analogueOr = ifelse(x > y, x, y);
 			const float_4 analogueAnd = ifelse(x > y, y, x);
 			const float_4 clip_x = ifelse(x > abs(y), abs(y), ifelse(x < -abs(y), -abs(y), x));
-			// note: x == 0 and y == 0 are special cases
-			const float_4 analogueXor = ifelse(x == 0, y, ifelse(y > 0, -clip_x, ifelse(y < 0, clip_x, x)));
+			const float_4 analogueXor = ifelse(y > 0, -clip_x, clip_x);
 
 			outputs[OR_OUTPUT].setVoltageSimd<float_4>(analogueOr, c);
 			outputs[AND_OUTPUT].setVoltageSimd<float_4>(analogueAnd, c);
@@ -153,8 +176,9 @@ struct Cosmos : Module {
 				outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(andGateOut, c);
 				outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(andTriggerOut, c);
 
-				const float_4 xorGateOut = ifelse(analogueXor > 0, 10.f, 0.f);
-				const float_4 xorTriggerHigh = logicalXorGate[c].process(analogueXor > 0);
+				// xor gate is a little different
+				const float_4 xorGateOut = ifelse((x > 0) ^ (y > 0), 10.f, 0.f);
+				const float_4 xorTriggerHigh = logicalXorGate[c].process(xorGateOut > 0);
 				logicalXorPulseGenerator[c].trigger(xorTriggerHigh, 1e-3);
 				const float_4 xorTriggerOut = ifelse(logicalXorPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
 				outputs[XOR_GATE_OUTPUT].setVoltageSimd<float_4>(xorGateOut, c);
@@ -189,8 +213,8 @@ struct Cosmos : Module {
 				outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
 				outputs[NAND_TRIG_OUTPUT].setVoltageSimd<float_4>(nandTriggerOut, c);
 
-				const float_4 xnorGateOut = ifelse(analogueXnor < 0, 0.f, 10.f);
-				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(analogueXnor < 0);
+				const float_4 xnorGateOut = ifelse((x < 0) ^ (y < 0), 10.f, 0.f);
+				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(xnorGateOut);
 				logicalXnorPulseGenerator[c].trigger(xnorTriggerHigh, 1e-3);
 				const float_4 xnorTriggerOut = ifelse(logicalXnorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
 				outputs[XNOR_GATE_OUTPUT].setVoltageSimd<float_4>(xnorGateOut, c);
@@ -217,14 +241,49 @@ struct Cosmos : Module {
 			// TODO: handle polyphonic lights
 		}
 
-		outputs[X_OUTPUT].setChannels(numActivePolyphonyChannels);
-		outputs[Y_OUTPUT].setChannels(numActivePolyphonyChannels);
+		for (int outputId = 0; outputId < OUTPUTS_LEN; outputId++) {
+			outputs[outputId].setChannels(numActivePolyphonyChannels);
+		}
 	}
 
 	void setRedGreenLED(int firstLightId, float value, float deltaTime) {
 		lights[firstLightId + 0].setBrightnessSmooth(value < 0 ? -value / 10.f : 0.f, deltaTime); 	// red
 		lights[firstLightId + 1].setBrightnessSmooth(value > 0 ? +value / 10.f : 0.f, deltaTime);	// green
 		lights[firstLightId + 2].setBrightness(0.f);												// blue
+	}
+
+	json_t* dataToJson() override {
+		json_t* rootJ = json_object();
+		json_object_set_new(rootJ, "oversampleLogicOutputs", json_boolean(oversampleLogicOutputs));
+		json_object_set_new(rootJ, "oversampleLogicGateOutputs", json_boolean(oversampleLogicGateOutputs));
+		json_object_set_new(rootJ, "oversampleLogicTriggerOutputs", json_boolean(oversampleLogicTriggerOutputs));
+		json_object_set_new(rootJ, "oversamplingIndex", json_integer(oversampler[0][0].getOversamplingIndex()));
+
+		return rootJ;
+	}
+
+	void dataFromJson(json_t* rootJ) override {
+
+		json_t* oversampleLogicOutputsJ = json_object_get(rootJ, "oversampleLogicOutputs");
+		if (oversampleLogicOutputsJ) {
+			oversampleLogicOutputs = json_boolean_value(oversampleLogicOutputsJ);
+		}
+
+		json_t* oversampleLogicGateOutputsJ = json_object_get(rootJ, "oversampleLogicGateOutputs");
+		if (oversampleLogicGateOutputsJ) {
+			oversampleLogicGateOutputs = json_boolean_value(oversampleLogicGateOutputsJ);
+		}
+
+		json_t* oversampleLogicTriggerOutputsJ = json_object_get(rootJ, "oversampleLogicTriggerOutputs");
+		if (oversampleLogicTriggerOutputsJ) {
+			oversampleLogicTriggerOutputs = json_boolean_value(oversampleLogicTriggerOutputsJ);
+		}
+
+		json_t* oversamplingIndexJ = json_object_get(rootJ, "oversamplingIndex");
+		if (oversamplingIndexJ) {
+			oversamplingIndex = json_integer_value(oversamplingIndexJ);
+			onSampleRateChange();
+		}
 	}
 };
 
@@ -282,6 +341,32 @@ struct CosmosWidget : ModuleWidget {
 		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(26.279, 89.35)), module, Cosmos::NOR_LIGHT));
 		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(44.376, 89.35)), module, Cosmos::NAND_LIGHT));
 		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.331, 98.787)), module, Cosmos::XNOR_LIGHT));
+	}
+
+	void appendContextMenu(Menu* menu) override {
+		Cosmos* module = dynamic_cast<Cosmos*>(this->module);
+		assert(module);
+
+		menu->addChild(new MenuSeparator());
+
+		auto oversamplingRateMenu = createIndexSubmenuItem("Oversampling",
+		{"Off", "x2", "x4", "x8"},
+		[ = ]() {
+			return module->oversamplingIndex;
+		},
+		[ = ](int mode) {
+			module->oversamplingIndex = mode;
+			module->onSampleRateChange();
+		});
+
+		menu->addChild(createSubmenuItem("Oversampling", "",
+		[ = ](Menu * menu) {
+			menu->addChild(oversamplingRateMenu);
+			menu->addChild(createBoolPtrMenuItem("Oversample logic outputs", "", &module->oversampleLogicOutputs));
+			menu->addChild(createBoolPtrMenuItem("Oversample logic gate outputs", "", &module->oversampleLogicGateOutputs));
+			menu->addChild(createBoolPtrMenuItem("Oversample logic trigger outputs", "", &module->oversampleLogicTriggerOutputs));
+		}));
+
 	}
 };
 
