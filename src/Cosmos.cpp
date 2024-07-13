@@ -213,7 +213,7 @@ struct Cosmos : Module {
 				outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
 				outputs[NAND_TRIG_OUTPUT].setVoltageSimd<float_4>(nandTriggerOut, c);
 
-				const float_4 xnorGateOut = ifelse((x < 0) ^ (y < 0), 10.f, 0.f);
+				const float_4 xnorGateOut = ifelse((x > 0) ^ (y > 0), 0.f, 10.f);
 				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(xnorGateOut);
 				logicalXnorPulseGenerator[c].trigger(xnorTriggerHigh, 1e-3);
 				const float_4 xnorTriggerOut = ifelse(logicalXnorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
