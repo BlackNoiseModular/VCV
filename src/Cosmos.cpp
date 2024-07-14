@@ -82,6 +82,9 @@ struct Cosmos : Module {
 	BooleanTrigger_4 logicalNandGate[4];
 	BooleanTrigger_4 logicalXnorGate[4];
 
+	dsp::BooleanTrigger xButtonTrigger;
+	dsp::BooleanTrigger yButtonTrigger;
+
 	// oversampling
 	chowdsp::VariableOversampling<6, float_4> oversampler[OUTPUTS_LEN][4]; 	// uses a 2*6=12th order Butterworth filter
 	int oversamplingIndex = 2; 	// default is 2^oversamplingIndex == x4 oversampling
@@ -140,11 +143,16 @@ struct Cosmos : Module {
 	void process(const ProcessArgs& args) override {
 
 		const int numActivePolyphonyChannels = std::max({1, inputs[X_INPUT].getChannels(), inputs[Y_INPUT].getChannels()});
+		xButtonTrigger.process(params[PAD_X_PARAM].getValue());
+		yButtonTrigger.process(params[PAD_Y_PARAM].getValue());
+
+		const float_4 xPad = 10.f * xButtonTrigger.isHigh();
+		const float_4 yPad = 10.f * yButtonTrigger.isHigh();
 
 		for (int c = 0; c < numActivePolyphonyChannels; c += 4) {
 
-			const float_4 x = inputs[X_INPUT].getPolyVoltageSimd<float_4>(c);
-			const float_4 y = inputs[Y_INPUT].getPolyVoltageSimd<float_4>(c);
+			const float_4 x = inputs[X_INPUT].getNormalPolyVoltageSimd<float_4>(xPad, c);
+			const float_4 y = inputs[Y_INPUT].getNormalPolyVoltageSimd<float_4>(yPad, c);
 
 			// main outputs
 			outputs[X_OUTPUT].setVoltageSimd<float_4>(x, c);
@@ -200,21 +208,22 @@ struct Cosmos : Module {
 			// inverse gate/trigger outputs
 			{
 				const float_4 norGateOut = ifelse(analogueNor < 0, 0.f, 10.f);
-				const float_4 norTriggerHigh = logicalNorGate[c].process(analogueNor < 0);
+				const float_4 norTriggerHigh = logicalNorGate[c].process(~(analogueNor < 0));
 				logicalNorPulseGenerator[c].trigger(norTriggerHigh, 1e-3);
 				const float_4 norTriggerOut = ifelse(logicalNorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
 				outputs[NOR_GATE_OUTPUT].setVoltageSimd<float_4>(norGateOut, c);
 				outputs[NOR_TRIG_OUTPUT].setVoltageSimd<float_4>(norTriggerOut, c);
 
 				const float_4 nandGateOut = ifelse(analogueNand < 0, 0.f, 10.f);
-				const float_4 nandTriggerHigh = logicalNandGate[c].process(analogueNand < 0);
+				const float_4 nandTriggerHigh = logicalNandGate[c].process(~(analogueNand < 0));
 				logicalNandPulseGenerator[c].trigger(nandTriggerHigh, 1e-3);
 				const float_4 nandTriggerOut = ifelse(logicalNandPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
 				outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
 				outputs[NAND_TRIG_OUTPUT].setVoltageSimd<float_4>(nandTriggerOut, c);
 
 				const float_4 xnorGateOut = ifelse((x > 0) ^ (y > 0), 0.f, 10.f);
-				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(xnorGateOut);
+				// slightly special case because of how we generate gates for xnor
+				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(xnorGateOut > 0);
 				logicalXnorPulseGenerator[c].trigger(xnorTriggerHigh, 1e-3);
 				const float_4 xnorTriggerOut = ifelse(logicalXnorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
 				outputs[XNOR_GATE_OUTPUT].setVoltageSimd<float_4>(xnorGateOut, c);
@@ -298,8 +307,8 @@ struct CosmosWidget : ModuleWidget {
 		addChild(createWidget<ScrewBlack>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		addChild(createWidget<ScrewBlack>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		addParam(createParamCentered<VCVButton>(mm2px(Vec(6.47, 64.318)), module, Cosmos::PAD_X_PARAM));
-		addParam(createParamCentered<VCVButton>(mm2px(Vec(64.275, 64.318)), module, Cosmos::PAD_Y_PARAM));
+		addParam(createParamCentered<PB61303>(mm2px(Vec(6.47, 64.318)), module, Cosmos::PAD_X_PARAM));
+		addParam(createParamCentered<PB61303>(mm2px(Vec(64.275, 64.318)), module, Cosmos::PAD_Y_PARAM));
 
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(17.67, 64.347)), module, Cosmos::X_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.962, 64.347)), module, Cosmos::Y_INPUT));
