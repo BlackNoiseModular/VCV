@@ -35,6 +35,11 @@ struct GomaII : Module {
 		ENUMS(CH3_LIGHT, 3),
 		LIGHTS_LEN
 	};
+	enum NormalledVoltage {
+		NORMALLED_5V,
+		NORMALLED_10V
+	};
+	NormalledVoltage normalledVoltage = NORMALLED_5V;
 
 	dsp::ClockDivider updateCounter;
 
@@ -70,11 +75,11 @@ struct GomaII : Module {
 		}
 
 		for (int i = 0; i < 4; i++) {
-			if (outputs[EXT_OUTPUT + i].isConnected()){
+			if (outputs[EXT_OUTPUT + i].isConnected()) {
 				continue;
 			}
 
-			for (int j = i + 1; j < 4; j++) {				
+			for (int j = i + 1; j < 4; j++) {
 				result[j] = result[i] = std::max(result[i], result[j]);
 
 				if (outputs[EXT_OUTPUT + j].isConnected()) {
@@ -88,42 +93,44 @@ struct GomaII : Module {
 
 	void process(const ProcessArgs& args) override {
 
+		// only need to do rarely, but update gain label based on whether we are in attenuator mode or attenuverter mode
+		if (updateCounter.process()) {
+			for (int m = 0; m < 4; m++) {
+				getParamQuantity(GAIN_EXT_PARAM + m)->displayOffset = params[MODE_EXT_PARAM + m].getValue() ? 0.f : -100.f;
+				getParamQuantity(GAIN_EXT_PARAM + m)->displayMultiplier = params[MODE_EXT_PARAM + m].getValue() ? 100.f : 200.f;
+				getParamQuantity(GAIN_EXT_PARAM + m)->defaultValue = params[MODE_EXT_PARAM + m].getValue() ? 0.f : 0.5f;
+			}
+		}
+
 		// get polyphonic status
 		const std::vector<int> polyphonyStatus = getPolyphonyStatus();
+		const float_4 normalledVoltageValue = (normalledVoltage == NORMALLED_5V) ? 5.f : 10.f;
 
 		float_4 activeSum[4] = {};
 
 		for (int m = 0; m < 4; m++) {
-			
+
 			const int numActiveChannels = polyphonyStatus[m];
 			float gain = params[GAIN_EXT_PARAM + m].getValue();
 			gain = params[MODE_EXT_PARAM + m].getValue() ? gain : 2 * gain - 1;
 
 			for (int c = 0; c < numActiveChannels; c += 4) {
-				
-				activeSum[c/4] += inputs[EXT_INPUT + m].getNormalPolyVoltage(5.f, c) * gain;
+
+				activeSum[c / 4] += inputs[EXT_INPUT + m].getNormalPolyVoltageSimd<float_4>(normalledVoltageValue, c) * gain;
 
 				if (outputs[EXT_OUTPUT + m].isConnected()) {
-					outputs[EXT_OUTPUT + m].setVoltageSimd<float_4>(activeSum[c/4], c);
+					outputs[EXT_OUTPUT + m].setVoltageSimd<float_4>(activeSum[c / 4], c);
 					activeSum[c / 4] = 0.f;
 				}
 			}
 
-			outputs[EXT_OUTPUT + m].setChannels(numActiveChannels);		
-			
+			outputs[EXT_OUTPUT + m].setChannels(numActiveChannels);
+
 			if (numActiveChannels == 1) {
-				setRedGreenLED(EXT_LIGHT + 3*m, inputs[EXT_INPUT + m].getVoltage(), args.sampleTime);
+				setRedGreenLED(EXT_LIGHT + 3 * m, inputs[EXT_INPUT + m].getVoltage(), args.sampleTime);
 			}
 		}
-		
-		// only need to do rarely, but update gain label based on whether we are in attenuator mode or attenuverter mode
-		if (updateCounter.process())		
-		{
-			for (int m = 0; m < 4; m++) {
-				getParamQuantity(GAIN_EXT_PARAM + m)->displayOffset = params[MODE_EXT_PARAM + m].getValue() ? 0.f : -100.f;
-				getParamQuantity(GAIN_EXT_PARAM + m)->displayMultiplier = params[MODE_EXT_PARAM + m].getValue() ? 100.f : 200.f;
-			}
-		}
+
 	}
 
 	void setRedGreenLED(int firstLightId, float value, float deltaTime) {
@@ -131,6 +138,21 @@ struct GomaII : Module {
 		lights[firstLightId + 0].setBrightnessSmooth(value < 0 ? -value : 0.f, deltaTime); 	// red
 		lights[firstLightId + 1].setBrightnessSmooth(value > 0 ? +value : 0.f, deltaTime);	// green
 		lights[firstLightId + 2].setBrightness(0.f);										// blue
+	}
+
+	json_t* dataToJson() override {
+		json_t* rootJ = json_object();
+		json_object_set_new(rootJ, "normalledVoltage", json_integer(normalledVoltage));
+		
+		return rootJ;
+	}
+
+	void dataFromJson(json_t* rootJ) override {
+
+		json_t* normalledVoltageJ = json_object_get(rootJ, "normalledVoltage");
+		if (normalledVoltageJ) {
+			normalledVoltage = (NormalledVoltage) json_integer_value(normalledVoltageJ);
+		}
 	}
 };
 
@@ -166,6 +188,14 @@ struct GomaIIWidget : ModuleWidget {
 		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 52.05)), module, GomaII::CH1_LIGHT));
 		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 79.55)), module, GomaII::CH2_LIGHT));
 		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 107.05)), module, GomaII::CH3_LIGHT));
+	}
+
+	void appendContextMenu(Menu* menu) override {
+		GomaII* module = dynamic_cast<GomaII*>(this->module);
+		assert(module);
+
+		menu->addChild(new MenuSeparator());
+		menu->addChild(createIndexPtrSubmenuItem("Normalled input voltage", {"5V", "10V"}, &module->normalledVoltage));
 	}
 };
 

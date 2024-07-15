@@ -57,7 +57,7 @@ struct SlewLFO : Module {
 		const float slewMax = (params[RATE_PARAM].getValue()) ? 10.f / 120e-6 : 10.f / 12e-3; 	// slow: 12 ms to 10V, fast: 120us to 10V
 		// Amount of extra slew per voltage difference
 		const float shapeScale = 1 / 10.f;
-		const float shape = params[CURVE_PARAM].getValue() * 0.998;
+		const float shape = (1-params[CURVE_PARAM].getValue()) * 0.998;
 
 		const float_4 param_rise = params[RISE_PARAM].getValue() * 10.f;
 		const float_4 param_fall = params[FALL_PARAM].getValue() * 10.f;
