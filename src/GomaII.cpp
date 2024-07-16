@@ -33,6 +33,7 @@ struct GomaII : Module {
 		ENUMS(CH1_LIGHT, 3),
 		ENUMS(CH2_LIGHT, 3),
 		ENUMS(CH3_LIGHT, 3),
+		EXPANDER_ACTIVE_LED,
 		LIGHTS_LEN
 	};
 	enum NormalledVoltage {
@@ -42,6 +43,12 @@ struct GomaII : Module {
 	NormalledVoltage normalledVoltage = NORMALLED_5V;
 
 	dsp::ClockDivider updateCounter;
+
+	struct float_4_block {
+		float_4 data[4] = {};
+		int numActivePolyphonyChannels = 1;
+	};
+	float_4_block value[2];
 
 	GomaII() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
@@ -65,13 +72,22 @@ struct GomaII : Module {
 		configOutput(CH2_OUTPUT, "Channel 2");
 		configOutput(CH3_OUTPUT, "Channel 3");
 
+		getLeftExpander().producerMessage = &value[0];
+		getLeftExpander().consumerMessage = &value[1];
+
 		updateCounter.setDivision(32);
 	}
 
-	std::vector<int> getPolyphonyStatus() {
+	std::vector<int> getPolyphonyStatus(int expanderPolyphonyChannels) {
 		std::vector<int> result;
 		for (int i = 0; i < 4; i++) {
-			result.push_back(std::max(1, inputs[EXT_INPUT + i].getChannels()));
+			if (i == 0) {
+				result.push_back(std::max({1, inputs[EXT_INPUT + i].getChannels(), expanderPolyphonyChannels}));
+			}
+			else {
+				result.push_back(std::max(1, inputs[EXT_INPUT + i].getChannels()));
+			}
+
 		}
 
 		for (int i = 0; i < 4; i++) {
@@ -93,6 +109,7 @@ struct GomaII : Module {
 
 	void process(const ProcessArgs& args) override {
 
+
 		// only need to do rarely, but update gain label based on whether we are in attenuator mode or attenuverter mode
 		if (updateCounter.process()) {
 			for (int m = 0; m < 4; m++) {
@@ -102,19 +119,31 @@ struct GomaII : Module {
 			}
 		}
 
-		// get polyphonic status
-		const std::vector<int> polyphonyStatus = getPolyphonyStatus();
+
 		const float_4 normalledVoltageValue = (normalledVoltage == NORMALLED_5V) ? 5.f : 10.f;
 
 		float_4 activeSum[4] = {};
 
+		// if we have a left expander, it's output is normalled to Ext input (allows chained mixers)
+		const float_4_block* leftExpanderData = (float_4_block*) getLeftExpander().consumerMessage;
+		int numExpanderPolyphonyChannels = -1;
+		if (leftExpanderData) {
+			for (int c = 0; c < 4; c++) {
+				activeSum[c] = leftExpanderData->data[c];
+			}
+			numExpanderPolyphonyChannels = leftExpanderData->numActivePolyphonyChannels;
+		}
+		const std::vector<int> polyphonyStatus = getPolyphonyStatus(numExpanderPolyphonyChannels);
+
+		// loop over the four mixer channels (ext, ch1, ch2, ch3)
 		for (int m = 0; m < 4; m++) {
 
-			const int numActiveChannels = polyphonyStatus[m];
+			const int numActivePolyphonyChannels = polyphonyStatus[m];
 			float gain = params[GAIN_EXT_PARAM + m].getValue();
 			gain = params[MODE_EXT_PARAM + m].getValue() ? gain : 2 * gain - 1;
 
-			for (int c = 0; c < numActiveChannels; c += 4) {
+			// looper over polyphony channels
+			for (int c = 0; c < numActivePolyphonyChannels; c += 4) {
 
 				activeSum[c / 4] += inputs[EXT_INPUT + m].getNormalPolyVoltageSimd<float_4>(normalledVoltageValue, c) * gain;
 
@@ -124,13 +153,31 @@ struct GomaII : Module {
 				}
 			}
 
-			outputs[EXT_OUTPUT + m].setChannels(numActiveChannels);
+			outputs[EXT_OUTPUT + m].setChannels(numActivePolyphonyChannels);
 
-			if (numActiveChannels == 1) {
+			if (numActivePolyphonyChannels == 1) {
 				setRedGreenLED(EXT_LIGHT + 3 * m, inputs[EXT_INPUT + m].getVoltage(), args.sampleTime);
 			}
 		}
 
+		Module* rightModule = getRightExpander().module;
+		if (rightModule && rightModule->getModel() == modelGomaII) {
+			// Get the producer message and cast to the correct pointer type.
+			float_4_block* value = (float_4_block*) rightModule->getLeftExpander().producerMessage;
+
+			// Write to the buffer
+			for (int c = 0; c < 4; c++) {
+				value->data[c] = activeSum[c];
+			}
+			value->numActivePolyphonyChannels = polyphonyStatus[3];
+
+			// Request Rack's engine to flip the double-buffer upon the next engine frame.
+			rightModule->getLeftExpander().requestMessageFlip();
+		}
+
+		// set LED to indicate expander active
+		Module* leftExpanderModule = getLeftExpander().module;
+		lights[EXPANDER_ACTIVE_LED].setBrightness((leftExpanderModule && leftExpanderModule->getModel() == modelGomaII));
 	}
 
 	void setRedGreenLED(int firstLightId, float value, float deltaTime) {
@@ -143,7 +190,7 @@ struct GomaII : Module {
 	json_t* dataToJson() override {
 		json_t* rootJ = json_object();
 		json_object_set_new(rootJ, "normalledVoltage", json_integer(normalledVoltage));
-		
+
 		return rootJ;
 	}
 
@@ -188,6 +235,9 @@ struct GomaIIWidget : ModuleWidget {
 		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 52.05)), module, GomaII::CH1_LIGHT));
 		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 79.55)), module, GomaII::CH2_LIGHT));
 		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 107.05)), module, GomaII::CH3_LIGHT));
+
+		addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(18., 22.)), module, GomaII::EXPANDER_ACTIVE_LED));
+
 	}
 
 	void appendContextMenu(Menu* menu) override {
