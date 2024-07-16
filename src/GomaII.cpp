@@ -126,8 +126,10 @@ struct GomaII : Module {
 
 		// if we have a left expander, it's output is normalled to Ext input (allows chained mixers)
 		const float_4_block* leftExpanderData = (float_4_block*) getLeftExpander().consumerMessage;
+		Module* leftModule = getLeftExpander().module;
+
 		int numExpanderPolyphonyChannels = -1;
-		if (leftExpanderData) {
+		if (leftModule && leftModule->getModel() == modelGomaII && leftExpanderData) {
 			for (int c = 0; c < 4; c++) {
 				activeSum[c] = leftExpanderData->data[c];
 			}
