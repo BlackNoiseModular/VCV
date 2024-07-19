@@ -297,6 +297,55 @@ struct Cosmos : Module {
 };
 
 
+
+struct CosmosLed : TSvgLight<RedGreenBlueLight> {
+
+	CosmosLed() {		
+
+	}
+
+	void draw(const DrawArgs& args) override {}
+	void drawLayer(const DrawArgs& args, int layer) override {
+		if (layer == 1) {
+
+			if (!sw->svg)
+				return;
+
+			if (module && !module->isBypassed()) {
+
+				for (auto s = sw->svg->handle->shapes; s; s = s->next) {
+					s->fill.color = ((int)(color.a * 255) << 24) + (((int)(color.b * 255)) << 16) + (((int)(color.g * 255)) << 8) + (int)(color.r * 255);
+					s->fill.type = NSVG_PAINT_COLOR;
+				}
+
+				nvgGlobalCompositeBlendFunc(args.vg, NVG_ONE_MINUS_DST_COLOR, NVG_ONE);
+				svgDraw(args.vg, sw->svg->handle);
+				drawHalo(args);
+			}
+		}
+		Widget::drawLayer(args, layer);
+	}
+};
+
+struct CosmosLedXor : CosmosLed {
+	CosmosLedXor() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_xor.svg")));		
+	}
+};
+
+struct CosmosLedOr : CosmosLed {
+	CosmosLedOr() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_or.svg")));		
+	}
+};
+
+
+struct CosmosLedAnd : CosmosLed {
+	CosmosLedAnd() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_and.svg")));		
+	}
+};
+
 struct CosmosWidget : ModuleWidget {
 	CosmosWidget(Cosmos* module) {
 		setModule(module);
@@ -338,9 +387,9 @@ struct CosmosWidget : ModuleWidget {
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.677, 114.371)), module, Cosmos::XNOR_GATE_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.981, 114.361)), module, Cosmos::XNOR_TRIG_OUTPUT));
 
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.331, 29.793)), module, Cosmos::XOR_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(26.279, 39.23)), module, Cosmos::OR_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(44.376, 39.23)), module, Cosmos::AND_LIGHT));
+		addChild(createLightCentered<CosmosLedXor>(mm2px(Vec(35.331, 29.793)), module, Cosmos::XOR_LIGHT));
+		addChild(createLightCentered<CosmosLedOr>(mm2px(Vec(26.279, 39.23)), module, Cosmos::OR_LIGHT));
+		addChild(createLightCentered<CosmosLedAnd>(mm2px(Vec(44.376, 39.23)), module, Cosmos::AND_LIGHT));
 		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.3, 54.892)), module, Cosmos::SUM_LIGHT));
 		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(29.372, 59.528)), module, Cosmos::X_LIGHT));
 		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(41.292, 59.528)), module, Cosmos::Y_LIGHT));
