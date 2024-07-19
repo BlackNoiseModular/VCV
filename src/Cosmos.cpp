@@ -339,12 +339,67 @@ struct CosmosLedOr : CosmosLed {
 	}
 };
 
-
 struct CosmosLedAnd : CosmosLed {
 	CosmosLedAnd() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_and.svg")));		
 	}
 };
+
+struct CosmosLedX : CosmosLed {
+	CosmosLedX() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_x.svg")));		
+	}
+};
+
+struct CosmosLedY : CosmosLed {
+	CosmosLedY() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_y.svg")));		
+	}
+};
+
+struct CosmosLedDiff : CosmosLed {
+	CosmosLedDiff() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_diff.svg")));		
+	}
+};
+
+struct CosmosLedSum : CosmosLed {
+	CosmosLedSum() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_sum.svg")));		
+	}
+};
+
+struct CosmosLedXInv : CosmosLed {
+	CosmosLedXInv() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_x_inv.svg")));		
+	}
+};
+
+struct CosmosLedYInv : CosmosLed {
+	CosmosLedYInv() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_y_inv.svg")));		
+	}
+};
+
+struct CosmosLedNor : CosmosLed {
+	CosmosLedNor() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_nor.svg")));		
+	}
+};
+
+struct CosmosLedNand : CosmosLed {
+	CosmosLedNand() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_nand.svg")));		
+	}
+};
+
+struct CosmosLedXnor : CosmosLed {
+	CosmosLedXnor() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_xnor.svg")));		
+	}
+};
+
+
 
 struct CosmosWidget : ModuleWidget {
 	CosmosWidget(Cosmos* module) {
@@ -390,15 +445,15 @@ struct CosmosWidget : ModuleWidget {
 		addChild(createLightCentered<CosmosLedXor>(mm2px(Vec(35.331, 29.793)), module, Cosmos::XOR_LIGHT));
 		addChild(createLightCentered<CosmosLedOr>(mm2px(Vec(26.279, 39.23)), module, Cosmos::OR_LIGHT));
 		addChild(createLightCentered<CosmosLedAnd>(mm2px(Vec(44.376, 39.23)), module, Cosmos::AND_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.3, 54.892)), module, Cosmos::SUM_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(29.372, 59.528)), module, Cosmos::X_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(41.292, 59.528)), module, Cosmos::Y_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(29.372, 69.052)), module, Cosmos::INV_X_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(41.292, 69.052)), module, Cosmos::INV_Y_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.3, 73.688)), module, Cosmos::DIFF_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(26.279, 89.35)), module, Cosmos::NOR_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(44.376, 89.35)), module, Cosmos::NAND_LIGHT));
-		addChild(createLightCentered<LargeLight<RedGreenBlueLight>>(mm2px(Vec(35.331, 98.787)), module, Cosmos::XNOR_LIGHT));
+		addChild(createLightCentered<CosmosLedSum>(mm2px(Vec(35.3, 54.892)), module, Cosmos::SUM_LIGHT));
+		addChild(createLightCentered<CosmosLedX>(mm2px(Vec(29.372, 59.528)), module, Cosmos::X_LIGHT));
+		addChild(createLightCentered<CosmosLedY>(mm2px(Vec(41.292, 59.528)), module, Cosmos::Y_LIGHT));
+		addChild(createLightCentered<CosmosLedXInv>(mm2px(Vec(29.372, 69.052)), module, Cosmos::INV_X_LIGHT));
+		addChild(createLightCentered<CosmosLedYInv>(mm2px(Vec(41.292, 69.052)), module, Cosmos::INV_Y_LIGHT));
+		addChild(createLightCentered<CosmosLedDiff>(mm2px(Vec(35.3, 73.688)), module, Cosmos::DIFF_LIGHT));
+		addChild(createLightCentered<CosmosLedNor>(mm2px(Vec(26.279, 89.35)), module, Cosmos::NOR_LIGHT));
+		addChild(createLightCentered<CosmosLedNand>(mm2px(Vec(44.376, 89.35)), module, Cosmos::NAND_LIGHT));
+		addChild(createLightCentered<CosmosLedXnor>(mm2px(Vec(35.331, 98.787)), module, Cosmos::XNOR_LIGHT));
 	}
 
 	void appendContextMenu(Menu* menu) override {
