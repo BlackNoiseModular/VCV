@@ -158,7 +158,7 @@ struct GomaII : Module {
 			outputs[EXT_OUTPUT + m].setChannels(numActivePolyphonyChannels);
 
 			if (numActivePolyphonyChannels == 1) {
-				setRedGreenLED(EXT_LIGHT + 3 * m, inputs[EXT_INPUT + m].getVoltage(), args.sampleTime);
+				setRedGreenLED(EXT_LIGHT + 3 * m, inputs[EXT_INPUT + m].getNormalVoltage(normalledVoltageValue[0]) * gain, args.sampleTime);
 			}
 		}
 
@@ -206,6 +206,38 @@ struct GomaII : Module {
 };
 
 
+struct GomaIIExtLed : SvgLight {
+	GomaIIExtLed() {
+		setSvg(APP->window->loadSvg(asset::plugin(pluginInstance, "res/components/goma_led_ext.svg")));
+		this->addBaseColor(SCHEME_WHITE);
+	}
+
+	// this is needed otherwise the widget bugs out on zoom
+	void draw(const DrawArgs& args) override {}
+
+	void drawLayer(const DrawArgs& args, int layer) override {
+		if (layer == 1) {
+			if (!sw->svg)
+				return;
+
+			if (module && !module->isBypassed()) {
+
+				for (auto s = sw->svg->handle->shapes; s; s = s->next) {
+					s->fill.color = ((int)(color.a * 255) << 24) + (((int)(color.b * 255)) << 16) + (((int)(color.g * 255)) << 8) + (int)(color.r * 255);
+					s->fill.type = NSVG_PAINT_COLOR;
+				}
+
+				nvgGlobalCompositeBlendFunc(args.vg, NVG_ONE_MINUS_DST_COLOR, NVG_ONE);
+				svgDraw(args.vg, sw->svg->handle);
+				drawHalo(args);
+			}
+		}
+
+		Widget::drawLayer(args, layer);
+	}
+
+};
+
 struct GomaIIWidget : ModuleWidget {
 	GomaIIWidget(GomaII* module) {
 		setModule(module);
@@ -238,7 +270,7 @@ struct GomaIIWidget : ModuleWidget {
 		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 79.55)), module, GomaII::CH2_LIGHT));
 		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 107.05)), module, GomaII::CH3_LIGHT));
 
-		addChild(createLightCentered<SmallLight<RedLight>>(mm2px(Vec(18., 22.)), module, GomaII::EXPANDER_ACTIVE_LED));
+		addChild(createLight<GomaIIExtLed>(mm2px(Vec(17.21, 24.657)), module, GomaII::EXPANDER_ACTIVE_LED));
 
 	}
 
