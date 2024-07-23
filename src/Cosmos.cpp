@@ -7,6 +7,7 @@ struct Cosmos : Module {
 	enum ParamId {
 		PAD_X_PARAM,
 		PAD_Y_PARAM,
+		THRESHOLD_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
@@ -92,11 +93,14 @@ struct Cosmos : Module {
 	bool oversampleLogicGateOutputs = false;
 	bool oversampleLogicTriggerOutputs = false;
 
+	ParamQuantity* thresholdTrimmerQuantity{};
 
 	Cosmos() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(PAD_X_PARAM, 0.f, 1.f, 0.f, "Pad X");
 		configParam(PAD_Y_PARAM, 0.f, 1.f, 0.f, "Pad Y");
+
+		thresholdTrimmerQuantity = configParam(THRESHOLD_PARAM, .0f, 2.f, 1.f, "Gate threshold", "V");
 
 		configInput(X_INPUT, "X");
 		configInput(Y_INPUT, "Y");
@@ -149,6 +153,8 @@ struct Cosmos : Module {
 		const float_4 xPad = 10.f * xButtonTrigger.isHigh();
 		const float_4 yPad = 10.f * yButtonTrigger.isHigh();
 
+		const float_4 threshold = params[THRESHOLD_PARAM].getValue();
+
 		for (int c = 0; c < numActivePolyphonyChannels; c += 4) {
 
 			const float_4 x = inputs[X_INPUT].getNormalPolyVoltageSimd<float_4>(xPad, c);
@@ -170,14 +176,14 @@ struct Cosmos : Module {
 
 			// gate/trigger outputs
 			{
-				const float_4 orGateOut = ifelse(analogueOr > 0, 10.f, 0.f);
+				const float_4 orGateOut = ifelse(analogueOr > threshold, 10.f, 0.f);
 				const float_4 orTriggerHigh = logicalOrGate[c].process(analogueOr > 0);
 				logicalOrPulseGenerator[c].trigger(orTriggerHigh, 1e-3);
 				const float_4 orTriggerOut = ifelse(logicalOrPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
 				outputs[OR_GATE_OUTPUT].setVoltageSimd<float_4>(orGateOut, c);
 				outputs[OR_TRIG_OUTPUT].setVoltageSimd<float_4>(orTriggerOut, c);
 
-				const float_4 andGateOut = ifelse(analogueAnd > 0, 10.f, 0.f);
+				const float_4 andGateOut = ifelse(analogueAnd > threshold, 10.f, 0.f);
 				const float_4 andTriggerHigh = logicalAndGate[c].process(analogueAnd > 0);
 				logicalAndPulseGenerator[c].trigger(andTriggerHigh, 1e-3);
 				const float_4 andTriggerOut = ifelse(logicalAndPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
@@ -185,7 +191,7 @@ struct Cosmos : Module {
 				outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(andTriggerOut, c);
 
 				// xor gate is a little different
-				const float_4 xorGateOut = ifelse((x > 0) ^ (y > 0), 10.f, 0.f);
+				const float_4 xorGateOut = ifelse(abs(x - y) > threshold, 10.f, 0.f);
 				const float_4 xorTriggerHigh = logicalXorGate[c].process(xorGateOut > 0);
 				logicalXorPulseGenerator[c].trigger(xorTriggerHigh, 1e-3);
 				const float_4 xorTriggerOut = ifelse(logicalXorPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
@@ -207,21 +213,21 @@ struct Cosmos : Module {
 
 			// inverse gate/trigger outputs
 			{
-				const float_4 norGateOut = ifelse(analogueNor < 0, 0.f, 10.f);
+				const float_4 norGateOut = ifelse(analogueNor < -threshold, 0.f, 10.f);
 				const float_4 norTriggerHigh = logicalNorGate[c].process(~(analogueNor < 0));
 				logicalNorPulseGenerator[c].trigger(norTriggerHigh, 1e-3);
 				const float_4 norTriggerOut = ifelse(logicalNorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
 				outputs[NOR_GATE_OUTPUT].setVoltageSimd<float_4>(norGateOut, c);
 				outputs[NOR_TRIG_OUTPUT].setVoltageSimd<float_4>(norTriggerOut, c);
 
-				const float_4 nandGateOut = ifelse(analogueNand < 0, 0.f, 10.f);
+				const float_4 nandGateOut = ifelse(analogueNand < -threshold, 0.f, 10.f);
 				const float_4 nandTriggerHigh = logicalNandGate[c].process(~(analogueNand < 0));
 				logicalNandPulseGenerator[c].trigger(nandTriggerHigh, 1e-3);
 				const float_4 nandTriggerOut = ifelse(logicalNandPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
 				outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
 				outputs[NAND_TRIG_OUTPUT].setVoltageSimd<float_4>(nandTriggerOut, c);
 
-				const float_4 xnorGateOut = ifelse((x > 0) ^ (y > 0), 0.f, 10.f);
+				const float_4 xnorGateOut = ifelse(abs(x - y) > threshold, 0.f, 10.f);
 				// slightly special case because of how we generate gates for xnor
 				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(xnorGateOut > 0);
 				logicalXnorPulseGenerator[c].trigger(xnorTriggerHigh, 1e-3);
@@ -296,11 +302,18 @@ struct Cosmos : Module {
 	}
 };
 
+// for context menu
+struct ThresholdTrimmerSlider : ui::Slider {
+	explicit ThresholdTrimmerSlider(ParamQuantity* q_) {
+		quantity = q_;
+		this->box.size.x = 200.0f;
+	}
+};
 
 
 struct CosmosLed : TSvgLight<RedGreenBlueLight> {
 
-	CosmosLed() {		
+	CosmosLed() {
 
 	}
 
@@ -329,73 +342,73 @@ struct CosmosLed : TSvgLight<RedGreenBlueLight> {
 
 struct CosmosLedXor : CosmosLed {
 	CosmosLedXor() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_xor.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_xor.svg")));
 	}
 };
 
 struct CosmosLedOr : CosmosLed {
 	CosmosLedOr() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_or.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_or.svg")));
 	}
 };
 
 struct CosmosLedAnd : CosmosLed {
 	CosmosLedAnd() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_and.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_and.svg")));
 	}
 };
 
 struct CosmosLedX : CosmosLed {
 	CosmosLedX() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_x.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_x.svg")));
 	}
 };
 
 struct CosmosLedY : CosmosLed {
 	CosmosLedY() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_y.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_y.svg")));
 	}
 };
 
 struct CosmosLedDiff : CosmosLed {
 	CosmosLedDiff() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_diff.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_diff.svg")));
 	}
 };
 
 struct CosmosLedSum : CosmosLed {
 	CosmosLedSum() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_sum.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_sum.svg")));
 	}
 };
 
 struct CosmosLedXInv : CosmosLed {
 	CosmosLedXInv() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_x_inv.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_x_inv.svg")));
 	}
 };
 
 struct CosmosLedYInv : CosmosLed {
 	CosmosLedYInv() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_y_inv.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_y_inv.svg")));
 	}
 };
 
 struct CosmosLedNor : CosmosLed {
 	CosmosLedNor() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_nor.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_nor.svg")));
 	}
 };
 
 struct CosmosLedNand : CosmosLed {
 	CosmosLedNand() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_nand.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_nand.svg")));
 	}
 };
 
 struct CosmosLedXnor : CosmosLed {
 	CosmosLedXnor() {
-		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_xnor.svg")));		
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_xnor.svg")));
 	}
 };
 
@@ -457,28 +470,30 @@ struct CosmosWidget : ModuleWidget {
 	}
 
 	void appendContextMenu(Menu* menu) override {
-		Cosmos* module = dynamic_cast<Cosmos*>(this->module);
+		Cosmos* module = static_cast<Cosmos*>(this->module);
 		assert(module);
 
 		menu->addChild(new MenuSeparator());
 
-		auto oversamplingRateMenu = createIndexSubmenuItem("Oversampling",
-		{"Off", "x2", "x4", "x8"},
-		[ = ]() {
-			return module->oversamplingIndex;
-		},
-		[ = ](int mode) {
-			module->oversamplingIndex = mode;
-			module->onSampleRateChange();
-		});
 
 		menu->addChild(createSubmenuItem("Oversampling", "",
 		[ = ](Menu * menu) {
-			menu->addChild(oversamplingRateMenu);
+			menu->addChild(createIndexSubmenuItem("Oversampling",
+			{"Off", "x2", "x4", "x8"},
+			[ = ]() {
+				return module->oversamplingIndex;
+			},
+			[ = ](int mode) {
+				module->oversamplingIndex = mode;
+				module->onSampleRateChange();
+			}));
 			menu->addChild(createBoolPtrMenuItem("Oversample logic outputs", "", &module->oversampleLogicOutputs));
 			menu->addChild(createBoolPtrMenuItem("Oversample logic gate outputs", "", &module->oversampleLogicGateOutputs));
 			menu->addChild(createBoolPtrMenuItem("Oversample logic trigger outputs", "", &module->oversampleLogicTriggerOutputs));
 		}));
+
+
+		menu->addChild(new ThresholdTrimmerSlider(module->thresholdTrimmerQuantity));
 
 	}
 };
