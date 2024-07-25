@@ -66,12 +66,12 @@ struct Cosmos : Module {
 	PulseGenerator_4 logicalNandPulseGenerator[4];
 	PulseGenerator_4 logicalXnorPulseGenerator[4];
 
-	BooleanTrigger_4 logicalOrGate[4];
-	BooleanTrigger_4 logicalAndGate[4];
-	BooleanTrigger_4 logicalXorGate[4];
-	BooleanTrigger_4 logicalNorGate[4];
-	BooleanTrigger_4 logicalNandGate[4];
-	BooleanTrigger_4 logicalXnorGate[4];
+	dsp::TSchmittTrigger<float_4> logicalOrGate[4];
+	dsp::TSchmittTrigger<float_4> logicalAndGate[4];
+	dsp::TSchmittTrigger<float_4> logicalXorGate[4];
+	dsp::TSchmittTrigger<float_4> logicalNorGate[4];
+	dsp::TSchmittTrigger<float_4> logicalNandGate[4];
+	dsp::TSchmittTrigger<float_4> logicalXnorGate[4];
 
 	dsp::BooleanTrigger xButtonTrigger;
 	dsp::BooleanTrigger yButtonTrigger;
@@ -140,13 +140,30 @@ struct Cosmos : Module {
 		xButtonTrigger.process(params[PAD_X_PARAM].getValue());
 		yButtonTrigger.process(params[PAD_Y_PARAM].getValue());
 
-		const float_4 xPad = 10.f * xButtonTrigger.isHigh();
-		const float_4 yPad = 10.f * yButtonTrigger.isHigh();
+		const float_4 xPad = 1.f * xButtonTrigger.isHigh();
+		const float_4 yPad = 1.f * yButtonTrigger.isHigh();
 
 		const float_4 threshold = params[THRESHOLD_PARAM].getValue();
+		const int oversamplingRatio = oversampler[OR_OUTPUT][0].getOversamplingRatio();
 
+		// trigger oversampling neccessitates gate oversampling
+		if (oversampleLogicTriggerOutputs) {
+			oversampleLogicGateOutputs = true;
+		}
+		// gate oversampling neccessitates logic outputs oversampling
+		if (oversampleLogicGateOutputs) {
+			oversampleLogicOutputs = true;
+		}
+		// disable oversampling if ratio is 1 (off)
+		if (oversamplingRatio == 1) {
+			oversampleLogicOutputs = false;
+			oversampleLogicGateOutputs = false;
+			oversampleLogicTriggerOutputs = false;
+		}
+
+		// loop over polyphony channels in blocks of 4
 		for (int c = 0; c < numActivePolyphonyChannels; c += 4) {
-
+			// x, y are normalled to the pad inputs
 			const float_4 x = inputs[X_INPUT].getNormalPolyVoltageSimd<float_4>(xPad, c);
 			const float_4 y = inputs[Y_INPUT].getNormalPolyVoltageSimd<float_4>(yPad, c);
 
@@ -159,77 +176,129 @@ struct Cosmos : Module {
 			outputs[INV_Y_OUTPUT].setVoltageSimd<float_4>(-y, c);
 			outputs[DIFF_OUTPUT].setVoltageSimd<float_4>(0.5 * (x - y), c);
 
-			// OR family of outputs
-			{
-				const float_4 analogueOr = ifelse(x > y, x, y);
-				const float_4 analogueNor = -analogueOr;
-				outputs[OR_OUTPUT].setVoltageSimd<float_4>(analogueOr, c);
-				outputs[NOR_OUTPUT].setVoltageSimd<float_4>(analogueNor, c);
+			// upsampled input arrays will be stored in these
+			float_4* xBuffer = oversampler[c][X_OUTPUT].getOSBuffer();
+			float_4* yBuffer = oversampler[c][Y_OUTPUT].getOSBuffer();
+			if (oversamplingRatio > 1) {
+				oversampler[c][X_OUTPUT].upsample(x);
+				oversampler[c][Y_OUTPUT].upsample(y);
+			}
+			else {
+				xBuffer[0] = x;
+				yBuffer[0] = y;
+			}
 
-				const float_4 orGateOut = ifelse(analogueOr > threshold, 10.f, 0.f);
-				const float_4 orTriggerHigh = logicalOrGate[c].process(orGateOut > 0);
-				logicalOrPulseGenerator[c].trigger(orTriggerHigh, 1e-3);
-				const float_4 orTriggerOut = ifelse(logicalOrPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+			// main logic outputs
+			float_4* orBuffer = oversampler[c][OR_OUTPUT].getOSBuffer();
+			float_4* andBuffer = oversampler[c][AND_OUTPUT].getOSBuffer();
+			float_4* xorBuffer = oversampler[c][XOR_OUTPUT].getOSBuffer();
+			const int oversampleRatioMain = oversampleLogicOutputs ? oversamplingRatio : 1;
+			for (int i = 0; i < oversampleRatioMain; i++) {
+				const float_4 x_ = xBuffer[i];
+				const float_4 y_ = yBuffer[i];
+
+				orBuffer[i] = ifelse(x_ > y_, x_, y_);
+				andBuffer[i] = ifelse(x_ > y_, y_, x_);
+				const float_4 clip_x = ifelse(x > abs(y_), abs(y_), ifelse(x_ < -abs(y_), -abs(y_), x_));
+				xorBuffer[i] = ifelse(y_ > 0, -clip_x, clip_x);
+			}
+
+			// calculate logic outputs regardless if their outputs are used (LEDs still need to work, and easier to leave always on)
+			const float_4 analogueOr = oversampleLogicOutputs ? oversampler[c][OR_OUTPUT].downsample() : orBuffer[0];
+			outputs[OR_OUTPUT].setVoltageSimd<float_4>(analogueOr, c);
+			const float_4 analogueNor = -analogueOr;
+			outputs[NOR_OUTPUT].setVoltageSimd<float_4>(analogueNor, c);
+
+			const float_4 analogueAnd = oversampleLogicOutputs ? oversampler[c][AND_OUTPUT].downsample() : andBuffer[0];
+			outputs[AND_OUTPUT].setVoltageSimd<float_4>(analogueAnd, c);
+			const float_4 analogueNand = -analogueAnd;
+			outputs[NAND_OUTPUT].setVoltageSimd<float_4>(analogueNand, c);
+
+			const float_4 analogueXor = oversampleLogicOutputs ? oversampler[c][XOR_OUTPUT].downsample() : xorBuffer[0];
+			outputs[XOR_OUTPUT].setVoltageSimd<float_4>(analogueXor, c);
+			const float_4 analogueXnor = -analogueXor;
+			outputs[XNOR_OUTPUT].setVoltageSimd<float_4>(analogueXnor, c);
+
+
+			// gate logic outputs
+			float_4* orGateBuffer = oversampler[c][OR_GATE_OUTPUT].getOSBuffer();
+			float_4* andGateBuffer = oversampler[c][AND_GATE_OUTPUT].getOSBuffer();
+			float_4* xorGateBuffer = oversampler[c][XOR_GATE_OUTPUT].getOSBuffer();
+			const int oversampleRatioGates = oversampleLogicGateOutputs ? oversamplingRatio : 1;
+			for (int i = 0; i < oversampleRatioGates; i++) {
+				orGateBuffer[i] = ifelse(orBuffer[i] > threshold, 10.f, 0.f);
+				andGateBuffer[i] = ifelse(andBuffer[i] > threshold, 10.f, 0.f);
+				// xor gate is a little different, are x and y close to within a tolerance
+				xorGateBuffer[i] = ifelse(abs(xBuffer[i] - yBuffer[i]) > threshold, 10.f, 0.f);
+			}
+
+			// only bother with downsampling if there's an active output
+			if (outputs[OR_GATE_OUTPUT].isConnected() || outputs[NOR_GATE_OUTPUT].isConnected()) {
+				const float_4 orGateOut = oversampleLogicGateOutputs ? oversampler[c][OR_GATE_OUTPUT].downsample() : orGateBuffer[0];
 				outputs[OR_GATE_OUTPUT].setVoltageSimd<float_4>(orGateOut, c);
-				outputs[OR_TRIG_OUTPUT].setVoltageSimd<float_4>(orTriggerOut, c);
-
-				const float_4 norGateOut = ifelse(analogueOr > threshold, 0.f, 10.f);
-				const float_4 norTriggerHigh = logicalNorGate[c].process(norGateOut > 0);
-				logicalNorPulseGenerator[c].trigger(norTriggerHigh, 1e-3);
-				const float_4 norTriggerOut = ifelse(logicalNorPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+				const float_4 norGateOut = 10.f - orGateOut;
 				outputs[NOR_GATE_OUTPUT].setVoltageSimd<float_4>(norGateOut, c);
-				outputs[NOR_TRIG_OUTPUT].setVoltageSimd<float_4>(norTriggerOut, c);
 			}
-
-			// AND family of outputs
-			{
-				const float_4 analogueAnd = ifelse(x > y, y, x);
-				const float_4 analogueNand = -analogueAnd;
-				outputs[AND_OUTPUT].setVoltageSimd<float_4>(analogueAnd, c);
-				outputs[NAND_OUTPUT].setVoltageSimd<float_4>(analogueNand, c);
-
-				const float_4 andGateOut = ifelse(analogueAnd > threshold, 10.f, 0.f);
-				const float_4 andTriggerHigh = logicalAndGate[c].process(andGateOut > 0);
-				logicalAndPulseGenerator[c].trigger(andTriggerHigh, 1e-3);
-				const float_4 andTriggerOut = ifelse(logicalAndPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+			if (outputs[AND_GATE_OUTPUT].isConnected() || outputs[NAND_GATE_OUTPUT].isConnected()) {
+				const float_4 andGateOut = oversampleLogicGateOutputs ? oversampler[c][AND_GATE_OUTPUT].downsample() : andGateBuffer[0];
 				outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(andGateOut, c);
-				outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(andTriggerOut, c);
-
-				// NAND gate is pure inverse
-				const float_4 nandGateOut = ifelse(analogueAnd > threshold, 0.f, 10.f);
-				const float_4 nandTriggerHigh = logicalAndGate[c].process(nandGateOut > 0);
-				logicalNandPulseGenerator[c].trigger(nandTriggerHigh, 1e-3);
-				const float_4 nandTriggerOut = ifelse(logicalNandPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
-				outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
-				outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(nandTriggerOut, c);
+				const float_4 nandGateOut = 10.f - andGateOut;
+				outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
 			}
-
-			
-			// XOR family of outputs
-			{
-				const float_4 clip_x = ifelse(x > abs(y), abs(y), ifelse(x < -abs(y), -abs(y), x));
-				const float_4 analogueXor = ifelse(y > 0, -clip_x, clip_x);
-				const float_4 analogueXnor = -analogueXor;
-				outputs[XOR_OUTPUT].setVoltageSimd<float_4>(analogueXor, c);
-				outputs[XNOR_OUTPUT].setVoltageSimd<float_4>(analogueXnor, c);
-
-				// xor gate is a little different
-				const float_4 xorGateOut = ifelse(abs(x - y) > threshold, 10.f, 0.f);
-				const float_4 xorTriggerHigh = logicalXorGate[c].process(xorGateOut > 0);
-				logicalXorPulseGenerator[c].trigger(xorTriggerHigh, 1e-3);
-				const float_4 xorTriggerOut = ifelse(logicalXorPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+			if (outputs[XOR_GATE_OUTPUT].isConnected() || outputs[XNOR_GATE_OUTPUT].isConnected()) {
+				const float_4 xorGateOut = oversampleLogicGateOutputs ? oversampler[c][XOR_GATE_OUTPUT].downsample() : xorGateBuffer[0];
 				outputs[XOR_GATE_OUTPUT].setVoltageSimd<float_4>(xorGateOut, c);
-				outputs[XOR_TRIG_OUTPUT].setVoltageSimd<float_4>(xorTriggerOut, c);
-
-				const float_4 xnorGateOut = ifelse(abs(x - y) > threshold, 0.f, 10.f);
-				// slightly special case because of how we generate gates for xnor
-				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(xnorGateOut > 0);
-				logicalXnorPulseGenerator[c].trigger(xnorTriggerHigh, 1e-3);
-				const float_4 xnorTriggerOut = ifelse(logicalXnorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
+				const float_4 xnorGateOut = 10.f - xorGateOut;
 				outputs[XNOR_GATE_OUTPUT].setVoltageSimd<float_4>(xnorGateOut, c);
-				outputs[XNOR_TRIG_OUTPUT].setVoltageSimd<float_4>(xnorTriggerOut, c);
 			}
-		}
+
+
+			// trigger outputs (derived from gates)
+			float_4* orTriggerBuffer = oversampler[c][OR_TRIG_OUTPUT].getOSBuffer();
+			float_4* norTriggerBuffer = oversampler[c][NOR_TRIG_OUTPUT].getOSBuffer();
+			float_4* andTriggerBuffer = oversampler[c][AND_TRIG_OUTPUT].getOSBuffer();
+			float_4* nandTriggerBuffer = oversampler[c][NAND_TRIG_OUTPUT].getOSBuffer();
+			float_4* xorTriggerBuffer = oversampler[c][XOR_TRIG_OUTPUT].getOSBuffer();
+			float_4* xnorTriggerBuffer = oversampler[c][XNOR_TRIG_OUTPUT].getOSBuffer();
+			const int oversampleRatioTriggers = oversampleLogicTriggerOutputs ? oversamplingRatio : 1;
+			const float deltaTime = args.sampleTime / oversampleRatioTriggers;
+
+			for (int i = 0; i < oversampleRatioTriggers; i++) {
+
+				const float_4 orTriggerHigh = logicalOrGate[c].process(orGateBuffer[i]);
+				logicalOrPulseGenerator[c].trigger(orTriggerHigh, 1e-3);
+				orTriggerBuffer[i] = ifelse(logicalOrPulseGenerator[c].process(deltaTime), 10.f, 0.f);
+				// gate is literal inverse
+				const float_4 norTiggerHigh = logicalNorGate[c].process(10.f - orGateBuffer[i]);
+				logicalNorPulseGenerator[c].trigger(norTiggerHigh, 1e-3);
+				norTriggerBuffer[i] = ifelse(logicalNorPulseGenerator[c].process(deltaTime), 10.f, 0.f);
+
+				const float_4 andTriggerHigh = logicalAndGate[c].process(andGateBuffer[i]);
+				logicalAndPulseGenerator[c].trigger(andTriggerHigh, 1e-3);
+				andTriggerBuffer[i] = ifelse(logicalAndPulseGenerator[c].process(deltaTime), 10.f, 0.f);
+				// gate is literal inverse
+				const float_4 nandTriggerHigh = logicalNandGate[c].process(10.f - andGateBuffer[i]);
+				logicalNandPulseGenerator[c].trigger(nandTriggerHigh, 1e-3);
+				nandTriggerBuffer[i] = ifelse(logicalNandPulseGenerator[c].process(deltaTime), 10.f, 0.f);
+
+				const float_4 xorTriggerHigh = logicalXorGate[c].process(xorGateBuffer[i]);
+				logicalXorPulseGenerator[c].trigger(xorTriggerHigh, 1e-3);
+				xorTriggerBuffer[i] = ifelse(logicalXorPulseGenerator[c].process(deltaTime), 10.f, 0.f);
+				// gate is literal inverse
+				const float_4 xnorTriggerHigh = logicalXnorGate[c].process(10.f - xorGateBuffer[i]);
+				logicalXnorPulseGenerator[c].trigger(xnorTriggerHigh, 1e-3);
+				xnorTriggerBuffer[i] = ifelse(logicalXnorPulseGenerator[c].process(deltaTime), 10.f, 0.f);
+			}
+
+			// updates trigger outputs (if they are connected)
+			updateTriggerOutput(OR_TRIG_OUTPUT, c, orTriggerBuffer);
+			updateTriggerOutput(NOR_TRIG_OUTPUT, c, norTriggerBuffer);
+			updateTriggerOutput(AND_TRIG_OUTPUT, c, andTriggerBuffer);
+			updateTriggerOutput(NAND_TRIG_OUTPUT, c, nandTriggerBuffer);
+			updateTriggerOutput(XOR_TRIG_OUTPUT, c, xorTriggerBuffer);
+			updateTriggerOutput(XNOR_TRIG_OUTPUT, c, xnorTriggerBuffer);
+
+		}	 // end of polyphony loop
 
 		if (numActivePolyphonyChannels == 1) {
 			setRedGreenLED(OR_LIGHT, outputs[OR_OUTPUT].getVoltage(), args.sampleTime);
@@ -262,6 +331,15 @@ struct Cosmos : Module {
 
 		for (int outputId = 0; outputId < OUTPUTS_LEN; outputId++) {
 			outputs[outputId].setChannels(numActivePolyphonyChannels);
+		}
+	}
+
+	// if the output is connected, downsample (if appropriate) and set the voltage
+	void updateTriggerOutput(int outputId, int channel, float_4* buffer) {
+		if (outputs[outputId].isConnected()) {
+			// only oversample if needed
+			const float_4 triggerOut = oversampleLogicTriggerOutputs ? oversampler[channel][outputId].downsample() : buffer[0];
+			outputs[outputId].setVoltageSimd<float_4>(triggerOut, channel);
 		}
 	}
 
@@ -501,7 +579,6 @@ struct CosmosWidget : ModuleWidget {
 			menu->addChild(createBoolPtrMenuItem("Oversample logic gate outputs", "", &module->oversampleLogicGateOutputs));
 			menu->addChild(createBoolPtrMenuItem("Oversample logic trigger outputs", "", &module->oversampleLogicTriggerOutputs));
 		}));
-
 
 		menu->addChild(new ThresholdTrimmerSlider(module->thresholdTrimmerQuantity));
 
