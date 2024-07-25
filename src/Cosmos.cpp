@@ -18,7 +18,7 @@ struct Cosmos : Module {
 	enum OutputId {
 		XOR_GATE_OUTPUT,
 		XOR_TRIG_OUTPUT,
-		TZ_CLIPPER_OUTPUT,
+		XOR_OUTPUT,
 		OR_GATE_OUTPUT,
 		AND_GATE_OUTPUT,
 		OR_OUTPUT,
@@ -37,7 +37,7 @@ struct Cosmos : Module {
 		NAND_OUTPUT,
 		NOR_GATE_OUTPUT,
 		NAND_GATE_OUTPUT,
-		INV_TZ_CLIPPER_OUTPUT,
+		XNOR_OUTPUT,
 		XNOR_GATE_OUTPUT,
 		XNOR_TRIG_OUTPUT,
 		OUTPUTS_LEN
@@ -57,16 +57,6 @@ struct Cosmos : Module {
 		ENUMS(XNOR_LIGHT, 3),
 		LIGHTS_LEN
 	};
-
-
-	// for boolean gates (unused for now)
-	dsp::TSchmittTrigger<float_4> logicalOrSchmitt[4];
-	dsp::TSchmittTrigger<float_4> logicalAndSchmitt[4];
-	dsp::TSchmittTrigger<float_4> logicalXorSchmitt[4];
-	// in theory we could use above for negated versions, but need falling edge detection too
-	dsp::TSchmittTrigger<float_4> logicalNorSchmitt[4];
-	dsp::TSchmittTrigger<float_4> logicalNandSchmitt[4];
-	dsp::TSchmittTrigger<float_4> logicalXNorSchmitt[4];
 
 	// for outputting triggers
 	PulseGenerator_4 logicalOrPulseGenerator[4];
@@ -107,7 +97,7 @@ struct Cosmos : Module {
 
 		configOutput(XOR_GATE_OUTPUT, "XOR gate");
 		configOutput(XOR_TRIG_OUTPUT, "XOR trigger");
-		configOutput(TZ_CLIPPER_OUTPUT, "Through-zero clipper");
+		configOutput(XOR_OUTPUT, "Through-zero clipper");
 		configOutput(OR_GATE_OUTPUT, "OR gate");
 		configOutput(AND_GATE_OUTPUT, "AND gate");
 		configOutput(OR_OUTPUT, "OR (maximum)");
@@ -126,7 +116,7 @@ struct Cosmos : Module {
 		configOutput(NAND_OUTPUT, "NAND (minimum inverted)");
 		configOutput(NOR_GATE_OUTPUT, "NOR gate");
 		configOutput(NAND_GATE_OUTPUT, "NAND gate");
-		configOutput(INV_TZ_CLIPPER_OUTPUT, "Ternary clipper (inverted)");
+		configOutput(XNOR_OUTPUT, "Ternary clipper (inverted)");
 		configOutput(XNOR_GATE_OUTPUT, "XNOR gate");
 		configOutput(XNOR_TRIG_OUTPUT, "XNOR trigger");
 
@@ -160,35 +150,68 @@ struct Cosmos : Module {
 			const float_4 x = inputs[X_INPUT].getNormalPolyVoltageSimd<float_4>(xPad, c);
 			const float_4 y = inputs[Y_INPUT].getNormalPolyVoltageSimd<float_4>(yPad, c);
 
-			// main outputs
+			// basic main outputs
 			outputs[X_OUTPUT].setVoltageSimd<float_4>(x, c);
 			outputs[Y_OUTPUT].setVoltageSimd<float_4>(y, c);
 			outputs[SUM_OUTPUT].setVoltageSimd<float_4>(0.5 * (x + y), c);
+			// basic inverse outputs
+			outputs[INV_X_OUTPUT].setVoltageSimd<float_4>(-x, c);
+			outputs[INV_Y_OUTPUT].setVoltageSimd<float_4>(-y, c);
+			outputs[DIFF_OUTPUT].setVoltageSimd<float_4>(0.5 * (x - y), c);
 
-			const float_4 analogueOr = ifelse(x > y, x, y);
-			const float_4 analogueAnd = ifelse(x > y, y, x);
-			const float_4 clip_x = ifelse(x > abs(y), abs(y), ifelse(x < -abs(y), -abs(y), x));
-			const float_4 analogueXor = ifelse(y > 0, -clip_x, clip_x);
-
-			outputs[OR_OUTPUT].setVoltageSimd<float_4>(analogueOr, c);
-			outputs[AND_OUTPUT].setVoltageSimd<float_4>(analogueAnd, c);
-			outputs[TZ_CLIPPER_OUTPUT].setVoltageSimd<float_4>(analogueXor, c);
-
-			// gate/trigger outputs
+			// OR family of outputs
 			{
+				const float_4 analogueOr = ifelse(x > y, x, y);
+				const float_4 analogueNor = -analogueOr;
+				outputs[OR_OUTPUT].setVoltageSimd<float_4>(analogueOr, c);
+				outputs[NOR_OUTPUT].setVoltageSimd<float_4>(analogueNor, c);
+
 				const float_4 orGateOut = ifelse(analogueOr > threshold, 10.f, 0.f);
-				const float_4 orTriggerHigh = logicalOrGate[c].process(analogueOr > 0);
+				const float_4 orTriggerHigh = logicalOrGate[c].process(orGateOut > 0);
 				logicalOrPulseGenerator[c].trigger(orTriggerHigh, 1e-3);
 				const float_4 orTriggerOut = ifelse(logicalOrPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
 				outputs[OR_GATE_OUTPUT].setVoltageSimd<float_4>(orGateOut, c);
 				outputs[OR_TRIG_OUTPUT].setVoltageSimd<float_4>(orTriggerOut, c);
 
+				const float_4 norGateOut = ifelse(analogueOr > threshold, 0.f, 10.f);
+				const float_4 norTriggerHigh = logicalNorGate[c].process(norGateOut > 0);
+				logicalNorPulseGenerator[c].trigger(norTriggerHigh, 1e-3);
+				const float_4 norTriggerOut = ifelse(logicalNorPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+				outputs[NOR_GATE_OUTPUT].setVoltageSimd<float_4>(norGateOut, c);
+				outputs[NOR_TRIG_OUTPUT].setVoltageSimd<float_4>(norTriggerOut, c);
+			}
+
+			// AND family of outputs
+			{
+				const float_4 analogueAnd = ifelse(x > y, y, x);
+				const float_4 analogueNand = -analogueAnd;
+				outputs[AND_OUTPUT].setVoltageSimd<float_4>(analogueAnd, c);
+				outputs[NAND_OUTPUT].setVoltageSimd<float_4>(analogueNand, c);
+
 				const float_4 andGateOut = ifelse(analogueAnd > threshold, 10.f, 0.f);
-				const float_4 andTriggerHigh = logicalAndGate[c].process(analogueAnd > 0);
+				const float_4 andTriggerHigh = logicalAndGate[c].process(andGateOut > 0);
 				logicalAndPulseGenerator[c].trigger(andTriggerHigh, 1e-3);
 				const float_4 andTriggerOut = ifelse(logicalAndPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
 				outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(andGateOut, c);
 				outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(andTriggerOut, c);
+
+				// NAND gate is pure inverse
+				const float_4 nandGateOut = ifelse(analogueAnd > threshold, 0.f, 10.f);
+				const float_4 nandTriggerHigh = logicalAndGate[c].process(nandGateOut > 0);
+				logicalNandPulseGenerator[c].trigger(nandTriggerHigh, 1e-3);
+				const float_4 nandTriggerOut = ifelse(logicalNandPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
+				outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
+				outputs[AND_TRIG_OUTPUT].setVoltageSimd<float_4>(nandTriggerOut, c);
+			}
+
+			
+			// XOR family of outputs
+			{
+				const float_4 clip_x = ifelse(x > abs(y), abs(y), ifelse(x < -abs(y), -abs(y), x));
+				const float_4 analogueXor = ifelse(y > 0, -clip_x, clip_x);
+				const float_4 analogueXnor = -analogueXor;
+				outputs[XOR_OUTPUT].setVoltageSimd<float_4>(analogueXor, c);
+				outputs[XNOR_OUTPUT].setVoltageSimd<float_4>(analogueXnor, c);
 
 				// xor gate is a little different
 				const float_4 xorGateOut = ifelse(abs(x - y) > threshold, 10.f, 0.f);
@@ -197,35 +220,6 @@ struct Cosmos : Module {
 				const float_4 xorTriggerOut = ifelse(logicalXorPulseGenerator[c].process(args.sampleTime),  10.f, 0.f);
 				outputs[XOR_GATE_OUTPUT].setVoltageSimd<float_4>(xorGateOut, c);
 				outputs[XOR_TRIG_OUTPUT].setVoltageSimd<float_4>(xorTriggerOut, c);
-			}
-
-			// inverse outputs
-			outputs[INV_X_OUTPUT].setVoltageSimd<float_4>(-x, c);
-			outputs[INV_Y_OUTPUT].setVoltageSimd<float_4>(-y, c);
-			outputs[DIFF_OUTPUT].setVoltageSimd<float_4>(0.5 * (x - y), c);
-
-			const float_4 analogueNor = -analogueOr;
-			const float_4 analogueNand = -analogueAnd;
-			const float_4 analogueXnor = -analogueXor;
-			outputs[NOR_OUTPUT].setVoltageSimd<float_4>(analogueNor, c);
-			outputs[NAND_OUTPUT].setVoltageSimd<float_4>(analogueNand, c);
-			outputs[INV_TZ_CLIPPER_OUTPUT].setVoltageSimd<float_4>(analogueXnor, c);
-
-			// inverse gate/trigger outputs
-			{
-				const float_4 norGateOut = ifelse(analogueNor < -threshold, 0.f, 10.f);
-				const float_4 norTriggerHigh = logicalNorGate[c].process(~(analogueNor < 0));
-				logicalNorPulseGenerator[c].trigger(norTriggerHigh, 1e-3);
-				const float_4 norTriggerOut = ifelse(logicalNorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
-				outputs[NOR_GATE_OUTPUT].setVoltageSimd<float_4>(norGateOut, c);
-				outputs[NOR_TRIG_OUTPUT].setVoltageSimd<float_4>(norTriggerOut, c);
-
-				const float_4 nandGateOut = ifelse(analogueNand < -threshold, 0.f, 10.f);
-				const float_4 nandTriggerHigh = logicalNandGate[c].process(~(analogueNand < 0));
-				logicalNandPulseGenerator[c].trigger(nandTriggerHigh, 1e-3);
-				const float_4 nandTriggerOut = ifelse(logicalNandPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
-				outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
-				outputs[NAND_TRIG_OUTPUT].setVoltageSimd<float_4>(nandTriggerOut, c);
 
 				const float_4 xnorGateOut = ifelse(abs(x - y) > threshold, 0.f, 10.f);
 				// slightly special case because of how we generate gates for xnor
@@ -234,14 +228,13 @@ struct Cosmos : Module {
 				const float_4 xnorTriggerOut = ifelse(logicalXnorPulseGenerator[c].process(args.sampleTime), 10.f, 0.f);
 				outputs[XNOR_GATE_OUTPUT].setVoltageSimd<float_4>(xnorGateOut, c);
 				outputs[XNOR_TRIG_OUTPUT].setVoltageSimd<float_4>(xnorTriggerOut, c);
-
 			}
 		}
 
 		if (numActivePolyphonyChannels == 1) {
 			setRedGreenLED(OR_LIGHT, outputs[OR_OUTPUT].getVoltage(), args.sampleTime);
 			setRedGreenLED(AND_LIGHT, outputs[AND_OUTPUT].getVoltage(), args.sampleTime);
-			setRedGreenLED(XOR_LIGHT, outputs[TZ_CLIPPER_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(XOR_LIGHT, outputs[XOR_OUTPUT].getVoltage(), args.sampleTime);
 			setRedGreenLED(SUM_LIGHT, outputs[SUM_OUTPUT].getVoltage(), args.sampleTime);
 			setRedGreenLED(X_LIGHT, outputs[X_OUTPUT].getVoltage(), args.sampleTime);
 			setRedGreenLED(Y_LIGHT, outputs[Y_OUTPUT].getVoltage(), args.sampleTime);
@@ -250,10 +243,21 @@ struct Cosmos : Module {
 			setRedGreenLED(INV_Y_LIGHT, outputs[INV_Y_OUTPUT].getVoltage(), args.sampleTime);
 			setRedGreenLED(NOR_LIGHT, outputs[NOR_OUTPUT].getVoltage(), args.sampleTime);
 			setRedGreenLED(NAND_LIGHT, outputs[NAND_OUTPUT].getVoltage(), args.sampleTime);
-			setRedGreenLED(XNOR_LIGHT, outputs[INV_TZ_CLIPPER_OUTPUT].getVoltage(), args.sampleTime);
+			setRedGreenLED(XNOR_LIGHT, outputs[XNOR_OUTPUT].getVoltage(), args.sampleTime);
 		}
 		else {
-			// TODO: handle polyphonic lights
+			setPolyphonicLED(OR_LIGHT);
+			setPolyphonicLED(AND_LIGHT);
+			setPolyphonicLED(XOR_LIGHT);
+			setPolyphonicLED(SUM_LIGHT);
+			setPolyphonicLED(X_LIGHT);
+			setPolyphonicLED(Y_LIGHT);
+			setPolyphonicLED(DIFF_LIGHT);
+			setPolyphonicLED(INV_X_LIGHT);
+			setPolyphonicLED(INV_Y_LIGHT);
+			setPolyphonicLED(NOR_LIGHT);
+			setPolyphonicLED(NAND_LIGHT);
+			setPolyphonicLED(XNOR_LIGHT);
 		}
 
 		for (int outputId = 0; outputId < OUTPUTS_LEN; outputId++) {
@@ -265,6 +269,12 @@ struct Cosmos : Module {
 		lights[firstLightId + 0].setBrightnessSmooth(value < 0 ? -value / 10.f : 0.f, deltaTime); 	// red
 		lights[firstLightId + 1].setBrightnessSmooth(value > 0 ? +value / 10.f : 0.f, deltaTime);	// green
 		lights[firstLightId + 2].setBrightness(0.f);												// blue
+	}
+
+	void setPolyphonicLED(int firstLightId) {
+		lights[firstLightId + 0].setBrightness(0.f); 	// red
+		lights[firstLightId + 1].setBrightness(0.f);	// green
+		lights[firstLightId + 2].setBrightness(1.f);	// blue
 	}
 
 	json_t* dataToJson() override {
@@ -432,7 +442,7 @@ struct CosmosWidget : ModuleWidget {
 
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.677, 14.23)), module, Cosmos::XOR_GATE_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.981, 14.22)), module, Cosmos::XOR_TRIG_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(35.329, 21.201)), module, Cosmos::TZ_CLIPPER_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(35.329, 21.201)), module, Cosmos::XOR_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.428, 26.725)), module, Cosmos::OR_GATE_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.23, 26.725)), module, Cosmos::AND_GATE_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.67, 39.245)), module, Cosmos::OR_OUTPUT));
@@ -451,7 +461,7 @@ struct CosmosWidget : ModuleWidget {
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.989, 89.346)), module, Cosmos::NAND_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.428, 101.866)), module, Cosmos::NOR_GATE_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.23, 101.865)), module, Cosmos::NAND_GATE_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(35.329, 107.39)), module, Cosmos::INV_TZ_CLIPPER_OUTPUT));
+		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(35.329, 107.39)), module, Cosmos::XNOR_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.677, 114.371)), module, Cosmos::XNOR_GATE_OUTPUT));
 		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.981, 114.361)), module, Cosmos::XNOR_TRIG_OUTPUT));
 
