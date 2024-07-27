@@ -8,6 +8,7 @@ struct Cosmos : Module {
 		PAD_X_PARAM,
 		PAD_Y_PARAM,
 		THRESHOLD_PARAM,
+		PRESSURE_PARAM,
 		PARAMS_LEN
 	};
 	enum InputId {
@@ -84,13 +85,17 @@ struct Cosmos : Module {
 	bool oversampleLogicTriggerOutputs = false;
 
 	ParamQuantity* thresholdTrimmerQuantity{};
+	ParamQuantity* pressureMaxQuantity{};
+	// pressure for two pads (X, Y)
+	float pressure[2] = {};
 
 	Cosmos() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
 		configParam(PAD_X_PARAM, 0.f, 1.f, 0.f, "Pad X");
 		configParam(PAD_Y_PARAM, 0.f, 1.f, 0.f, "Pad Y");
 
-		thresholdTrimmerQuantity = configParam(THRESHOLD_PARAM, .0f, 2.f, 1.f, "Gate threshold", "V");
+		thresholdTrimmerQuantity = configParam(THRESHOLD_PARAM, .0f, 2.f, 1.f, "Gate/trigger threshold", "V");
+		pressureMaxQuantity = configParam(PRESSURE_PARAM, .0f, 5.f, 1.f, "Pad max presssure", "V");
 
 		configInput(X_INPUT, "X");
 		configInput(Y_INPUT, "Y");
@@ -140,8 +145,8 @@ struct Cosmos : Module {
 		xButtonTrigger.process(params[PAD_X_PARAM].getValue());
 		yButtonTrigger.process(params[PAD_Y_PARAM].getValue());
 
-		const float_4 xPad = 1.f * xButtonTrigger.isHigh();
-		const float_4 yPad = 1.f * yButtonTrigger.isHigh();
+		const float_4 xPad = params[PRESSURE_PARAM].getValue() * pressure[PAD_X_PARAM] * xButtonTrigger.isHigh();
+		const float_4 yPad = params[PRESSURE_PARAM].getValue() * pressure[PAD_Y_PARAM] * yButtonTrigger.isHigh();
 
 		const float_4 threshold = params[THRESHOLD_PARAM].getValue();
 		const int oversamplingRatio = oversampler[OR_OUTPUT][0].getOversamplingRatio();
@@ -397,7 +402,13 @@ struct ThresholdTrimmerSlider : ui::Slider {
 		this->box.size.x = 200.0f;
 	}
 };
-
+// for context menu
+struct PressureMaxSlider : ui::Slider {
+	explicit PressureMaxSlider(ParamQuantity* q_) {
+		quantity = q_;
+		this->box.size.x = 200.0f;
+	}
+};
 
 struct CosmosLed : TSvgLight<RedGreenBlueLight> {
 
@@ -500,6 +511,42 @@ struct CosmosLedXnor : CosmosLed {
 	}
 };
 
+struct CosmosPad : app::SvgSwitch {
+	bool dragging = false;
+	Vec dragPosition = Vec(0, 0);
+
+	CosmosPad() {
+		momentary = true;
+		// TODO: update
+		addFrame(Svg::load(asset::system("res/ComponentLibrary/PB61303.svg")));
+	}
+
+	void onButton(const ButtonEvent& e) override {
+		// storing starting position of drag (for mouse tracking)
+		dragPosition = e.pos;
+
+		SvgSwitch::onButton(e);
+	}
+
+	void onDragMove(const event::DragMove& e) override {
+
+		// update the position
+		float zoom = getAbsoluteZoom();
+		Vec newPosition = dragPosition.plus(e.mouseDelta.div(zoom));
+		dragPosition.x = newPosition.x;
+		dragPosition.y = newPosition.y;
+
+		// find distance from the centre of the pad
+		math::Vec c = box.size.div(2);
+		float dist = newPosition.minus(c).norm();
+		// and store (so pressure is 1 at centre and 0 at the edge)
+		Cosmos* thisModule = static_cast<Cosmos*>(module);
+		thisModule->pressure[this->paramId] = 1.f - clamp(dist / c.x, 0.f, 1.f);
+
+		e.consume(this);
+		SvgSwitch::onDragMove(e);
+	}
+};
 
 
 struct CosmosWidget : ModuleWidget {
@@ -512,8 +559,8 @@ struct CosmosWidget : ModuleWidget {
 		addChild(createWidget<ScrewBlack>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 		addChild(createWidget<ScrewBlack>(Vec(box.size.x - 2 * RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		addParam(createParamCentered<PB61303>(mm2px(Vec(6.47, 64.318)), module, Cosmos::PAD_X_PARAM));
-		addParam(createParamCentered<PB61303>(mm2px(Vec(64.275, 64.318)), module, Cosmos::PAD_Y_PARAM));
+		addParam(createParamCentered<CosmosPad>(mm2px(Vec(6.47, 64.318)), module, Cosmos::PAD_X_PARAM));
+		addParam(createParamCentered<CosmosPad>(mm2px(Vec(64.275, 64.318)), module, Cosmos::PAD_Y_PARAM));
 
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(17.67, 64.347)), module, Cosmos::X_INPUT));
 		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.962, 64.347)), module, Cosmos::Y_INPUT));
@@ -581,6 +628,7 @@ struct CosmosWidget : ModuleWidget {
 		}));
 
 		menu->addChild(new ThresholdTrimmerSlider(module->thresholdTrimmerQuantity));
+		menu->addChild(new PressureMaxSlider(module->pressureMaxQuantity));
 
 	}
 };
