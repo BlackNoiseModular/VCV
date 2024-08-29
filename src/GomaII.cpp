@@ -235,7 +235,30 @@ struct GomaIIExtLed : SvgLight {
 
 		Widget::drawLayer(args, layer);
 	}
+};
 
+struct GomaCh1Led : BlackNoiseLed {
+	GomaCh1Led() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/goma_1.svg")));
+	}
+};
+
+struct GomaCh2Led : BlackNoiseLed {
+	GomaCh2Led() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/goma_2.svg")));
+	}
+};
+
+struct GomaCh3Led : BlackNoiseLed {
+	GomaCh3Led() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/goma_3.svg")));
+	}
+};
+
+struct GomaCh4Led : BlackNoiseLed {
+	GomaCh4Led() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/goma_4.svg")));
+	}
 };
 
 struct GomaIIWidget : ModuleWidget {
@@ -247,28 +270,28 @@ struct GomaIIWidget : ModuleWidget {
 		addChild(createWidget<ScrewBlack>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(13.146, 14.344)), module, GomaII::GAIN_EXT_PARAM));
-		addParam(createParamCentered<CKSS>(mm2px(Vec(3.795, 15.55)), module, GomaII::MODE_EXT_PARAM));
+		addParam(createParamCentered<CKSSNarrow>(mm2px(Vec(3.795, 15.55)), module, GomaII::MODE_EXT_PARAM));
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(13.146, 41.844)), module, GomaII::GAIN_CH1_PARAM));
-		addParam(createParamCentered<CKSS>(mm2px(Vec(3.795, 43.05)), module, GomaII::MODE_CH1_PARAM));
+		addParam(createParamCentered<CKSSNarrow>(mm2px(Vec(3.795, 43.05)), module, GomaII::MODE_CH1_PARAM));
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(13.146, 69.344)), module, GomaII::GAIN_CH2_PARAM));
-		addParam(createParamCentered<CKSS>(mm2px(Vec(3.795, 70.55)), module, GomaII::MODE_CH2_PARAM));
+		addParam(createParamCentered<CKSSNarrow>(mm2px(Vec(3.795, 70.55)), module, GomaII::MODE_CH2_PARAM));
 		addParam(createParamCentered<Trimpot>(mm2px(Vec(13.146, 96.844)), module, GomaII::GAIN_CH3_PARAM));
-		addParam(createParamCentered<CKSS>(mm2px(Vec(3.795, 98.05)), module, GomaII::MODE_CH3_PARAM));
+		addParam(createParamCentered<CKSSNarrow>(mm2px(Vec(3.795, 98.05)), module, GomaII::MODE_CH3_PARAM));
 
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(5.186, 30.55)), module, GomaII::EXT_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(5.186, 58.05)), module, GomaII::CH1_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(5.186, 85.55)), module, GomaII::CH2_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(5.186, 113.05)), module, GomaII::CH3_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(5.186, 30.55)), module, GomaII::EXT_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(5.186, 58.05)), module, GomaII::CH1_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(5.186, 85.55)), module, GomaII::CH2_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(5.186, 113.05)), module, GomaII::CH3_INPUT));
 
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(15.143, 30.55)), module, GomaII::EXT_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(15.143, 58.05)), module, GomaII::CH1_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(15.143, 85.55)), module, GomaII::CH2_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(15.143, 113.05)), module, GomaII::CH3_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(15.143, 30.55)), module, GomaII::EXT_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(15.143, 58.05)), module, GomaII::CH1_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(15.143, 85.55)), module, GomaII::CH2_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(15.143, 113.05)), module, GomaII::CH3_OUTPUT));
 
-		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 24.552)), module, GomaII::EXT_LIGHT));
-		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 52.05)), module, GomaII::CH1_LIGHT));
-		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 79.55)), module, GomaII::CH2_LIGHT));
-		addChild(createLightCentered<SmallLight<RedGreenBlueLight>>(mm2px(Vec(10.145, 107.05)), module, GomaII::CH3_LIGHT));
+		addChild(createLightCentered<GomaCh1Led>(mm2px(Vec(10.145, 24.552)), module, GomaII::EXT_LIGHT));
+		addChild(createLightCentered<GomaCh2Led>(mm2px(Vec(10.145, 52.05)), module, GomaII::CH1_LIGHT));
+		addChild(createLightCentered<GomaCh3Led>(mm2px(Vec(10.145, 79.55)), module, GomaII::CH2_LIGHT));
+		addChild(createLightCentered<GomaCh4Led>(mm2px(Vec(10.145, 107.05)), module, GomaII::CH3_LIGHT));
 
 		addChild(createLight<GomaIIExtLed>(mm2px(Vec(17.21, 24.657)), module, GomaII::EXPANDER_ACTIVE_LED));
 

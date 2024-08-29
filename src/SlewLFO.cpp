@@ -23,8 +23,8 @@ struct SlewLFO : Module {
 		OUTPUTS_LEN
 	};
 	enum LightId {
-		IN_LIGHT,
-		OUT_LIGHT,
+		ENUMS(IN_LIGHT, 3),
+		ENUMS(OUT_LIGHT, 3),
 		LIGHTS_LEN
 	};
 
@@ -43,6 +43,9 @@ struct SlewLFO : Module {
 	}
 
 	float_4 out[4] = {};
+	float_4 phases[4] = {};
+	float_4 states[4] = {}; 	// 0 rising, 1 falling
+	
 	void process(const ProcessArgs& args) override {
 
 		float_4 in[4] = {};
@@ -57,7 +60,7 @@ struct SlewLFO : Module {
 		const float slewMax = (params[RATE_PARAM].getValue()) ? 10.f / 120e-6 : 10.f / 12e-3; 	// slow: 12 ms to 10V, fast: 120us to 10V
 		// Amount of extra slew per voltage difference
 		const float shapeScale = 1 / 10.f;
-		const float shape = (1-params[CURVE_PARAM].getValue()) * 0.998;
+		const float shape = (1 - params[CURVE_PARAM].getValue()) * 0.998;
 
 		const float_4 param_rise = params[RISE_PARAM].getValue() * 10.f;
 		const float_4 param_fall = params[FALL_PARAM].getValue() * 10.f;
@@ -102,40 +105,34 @@ struct SlewLFO : Module {
 
 			outputs[OUT_OUTPUT].setVoltageSimd(out[c / 4], c);
 		}
+
+		if (inputs[IN_INPUT].isConnected()) {
+			setRedGreenLED(IN_LIGHT, in[0][0], args.sampleTime);
+		}
+		setRedGreenLED(OUT_LIGHT, out[0][0], args.sampleTime);
+
 	}
 
-	float_4 phases[4] = {};
-	float_4 states[4] = {}; 	// 0 rising, 1 falling
-	// unused
-	void processLFO(const ProcessArgs& args) {
-		// this is the number of active polyphony engines, defined by rise/fall CV
-		const int numPolyphonyEngines = std::max({1, inputs[RISE_INPUT].getChannels(), inputs[FALL_INPUT].getChannels()});
-		outputs[OUT_OUTPUT].setChannels(numPolyphonyEngines);
+	void setRedGreenLED(int firstLightId, float value, float deltaTime) {
+		lights[firstLightId + 0].setBrightnessSmooth(value < 0 ? -value / 10.f : 0.f, deltaTime); 	// red
+		lights[firstLightId + 1].setBrightnessSmooth(value > 0 ? +value / 10.f : 0.f, deltaTime);	// green
+		lights[firstLightId + 2].setBrightness(0.f);												// blue
+	}
 
-		const float_4 attackShape = 1.f; // 1.f - params[CURVE_PARAM].getValue() * 0.8f;
-		const float_4 releaseShape = 1.f; // 1.f + 2 * params[CURVE_PARAM].getValue();
+	
+};
 
-		for (int c = 0; c < numPolyphonyEngines; c += 4) {
-			// get rise and fall (between 0 and 1)
-			const float_4 rise = inputs[RISE_INPUT].getNormalPolyVoltageSimd<float_4>(10.f, c) / 10.f * params[RISE_PARAM].getValue();
-			const float_4 fall = inputs[FALL_INPUT].getNormalPolyVoltageSimd<float_4>(10.f, c) / 10.f * params[FALL_PARAM].getValue();
-
-			const float_4 riseMs = 12 * pow(10.f, -3 * (1 - rise));
-			const float_4 fallMs = 12 * pow(10.f, -3 * (1 - fall));
-
-			states[c / 4] = ifelse(phases[c / 4] > 1.f, float_4::mask(), states[c / 4]);
-			states[c / 4] = ifelse(phases[c / 4] < 0.f, 0.f, states[c / 4]);
-
-			phases[c / 4] += ifelse(states[c / 4], -args.sampleTime / fallMs, args.sampleTime / riseMs);
-
-			out[c / 4] = 5.f * ifelse(states[c / 4], pow(phases[c / 4], releaseShape), pow(phases[c / 4], attackShape));
-
-			outputs[OUT_OUTPUT].setVoltageSimd(out[c / 4], c);
-		}
-
+struct SlewInLed : BlackNoiseLed {
+	SlewInLed() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/slew_in.svg")));
 	}
 };
 
+struct SlewOutLed : BlackNoiseLed {
+	SlewOutLed() {
+		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/slew_out.svg")));
+	}
+};
 
 struct SlewLFOWidget : ModuleWidget {
 	SlewLFOWidget(SlewLFO* module) {
@@ -145,21 +142,21 @@ struct SlewLFOWidget : ModuleWidget {
 		addChild(createWidget<ScrewBlack>(Vec(RACK_GRID_WIDTH, 0)));
 		addChild(createWidget<ScrewBlack>(Vec(RACK_GRID_WIDTH, RACK_GRID_HEIGHT - RACK_GRID_WIDTH)));
 
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.14, 27.257)), module, SlewLFO::CURVE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.14, 45.257)), module, SlewLFO::RISE_PARAM));
-		addParam(createParamCentered<RoundBlackKnob>(mm2px(Vec(10.14, 63.247)), module, SlewLFO::FALL_PARAM));
-		addParam(createParamCentered<CKSS>(mm2px(Vec(5.133, 80.944)), module, SlewLFO::MODE_PARAM));
-		addParam(createParamCentered<CKSS>(mm2px(Vec(15.197, 80.944)), module, SlewLFO::RATE_PARAM));
+		addParam(createParamCentered<HexnutKnobBlack>(mm2px(Vec(10.14, 27.257)), module, SlewLFO::CURVE_PARAM));
+		addParam(createParamCentered<HexnutKnobBlack>(mm2px(Vec(10.14, 45.257)), module, SlewLFO::RISE_PARAM));
+		addParam(createParamCentered<HexnutKnobBlack>(mm2px(Vec(10.14, 63.247)), module, SlewLFO::FALL_PARAM));
+		addParam(createParamCentered<DoepferSwitch>(mm2px(Vec(5.133, 80.944)), module, SlewLFO::MODE_PARAM));
+		addParam(createParamCentered<DoepferSwitch>(mm2px(Vec(15.197, 80.944)), module, SlewLFO::RATE_PARAM));
 		addParam(createParamCentered<VCVButton>(mm2px(Vec(10.147, 103.259)), module, SlewLFO::CAPACITOR_PARAM));
 
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(5.072, 95.296)), module, SlewLFO::RISE_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(15.124, 95.296)), module, SlewLFO::FALL_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(5.072, 112.021)), module, SlewLFO::IN_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(5.072, 95.296)), module, SlewLFO::RISE_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(15.124, 95.296)), module, SlewLFO::FALL_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(5.072, 112.021)), module, SlewLFO::IN_INPUT));
 
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(15.124, 112.021)), module, SlewLFO::OUT_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(15.124, 112.021)), module, SlewLFO::OUT_OUTPUT));
 
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(3.403, 104.003)), module, SlewLFO::IN_LIGHT));
-		addChild(createLightCentered<MediumLight<RedLight>>(mm2px(Vec(16.897, 104.003)), module, SlewLFO::OUT_LIGHT));
+		addChild(createLightCentered<SlewInLed>(mm2px(Vec(3.403, 104.123)), module, SlewLFO::IN_LIGHT));
+		addChild(createLightCentered<SlewOutLed>(mm2px(Vec(16.897, 104.123)), module, SlewLFO::OUT_LIGHT));
 	}
 };
 

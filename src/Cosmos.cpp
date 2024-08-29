@@ -410,102 +410,75 @@ struct PressureMaxSlider : ui::Slider {
 	}
 };
 
-struct CosmosLed : TSvgLight<RedGreenBlueLight> {
 
-	CosmosLed() {
 
-	}
-
-	void draw(const DrawArgs& args) override {}
-	void drawLayer(const DrawArgs& args, int layer) override {
-		if (layer == 1) {
-
-			if (!sw->svg)
-				return;
-
-			if (module && !module->isBypassed()) {
-
-				for (auto s = sw->svg->handle->shapes; s; s = s->next) {
-					s->fill.color = ((int)(color.a * 255) << 24) + (((int)(color.b * 255)) << 16) + (((int)(color.g * 255)) << 8) + (int)(color.r * 255);
-					s->fill.type = NSVG_PAINT_COLOR;
-				}
-
-				nvgGlobalCompositeBlendFunc(args.vg, NVG_ONE_MINUS_DST_COLOR, NVG_ONE);
-				svgDraw(args.vg, sw->svg->handle);
-				drawHalo(args);
-			}
-		}
-		Widget::drawLayer(args, layer);
-	}
-};
-
-struct CosmosLedXor : CosmosLed {
+struct CosmosLedXor : BlackNoiseLed {
 	CosmosLedXor() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_xor.svg")));
 	}
 };
 
-struct CosmosLedOr : CosmosLed {
+struct CosmosLedOr : BlackNoiseLed {
 	CosmosLedOr() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_or.svg")));
 	}
 };
 
-struct CosmosLedAnd : CosmosLed {
+struct CosmosLedAnd : BlackNoiseLed {
 	CosmosLedAnd() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_and.svg")));
 	}
 };
 
-struct CosmosLedX : CosmosLed {
+struct CosmosLedX : BlackNoiseLed {
 	CosmosLedX() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_x.svg")));
 	}
 };
 
-struct CosmosLedY : CosmosLed {
+struct CosmosLedY : BlackNoiseLed {
 	CosmosLedY() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_y.svg")));
 	}
 };
 
-struct CosmosLedDiff : CosmosLed {
+struct CosmosLedDiff : BlackNoiseLed {
 	CosmosLedDiff() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_diff.svg")));
 	}
 };
 
-struct CosmosLedSum : CosmosLed {
+struct CosmosLedSum : BlackNoiseLed {
 	CosmosLedSum() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_sum.svg")));
 	}
 };
 
-struct CosmosLedXInv : CosmosLed {
+struct CosmosLedXInv : BlackNoiseLed {
 	CosmosLedXInv() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_x_inv.svg")));
 	}
 };
 
-struct CosmosLedYInv : CosmosLed {
+struct CosmosLedYInv : BlackNoiseLed {
 	CosmosLedYInv() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_y_inv.svg")));
 	}
 };
 
-struct CosmosLedNor : CosmosLed {
+struct CosmosLedNor : BlackNoiseLed {
 	CosmosLedNor() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_nor.svg")));
 	}
 };
 
-struct CosmosLedNand : CosmosLed {
+struct CosmosLedNand : BlackNoiseLed {
 	CosmosLedNand() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_nand.svg")));
 	}
 };
 
-struct CosmosLedXnor : CosmosLed {
+struct CosmosLedXnor : BlackNoiseLed {
 	CosmosLedXnor() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_led_xnor.svg")));
 	}
@@ -517,8 +490,9 @@ struct CosmosPad : app::SvgSwitch {
 
 	CosmosPad() {
 		momentary = true;
-		// TODO: update
-		addFrame(Svg::load(asset::system("res/ComponentLibrary/PB61303.svg")));
+
+		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_push_0.svg")));
+		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/cosmos_push_1.svg")));
 	}
 
 	void onButton(const ButtonEvent& e) override {
@@ -562,33 +536,33 @@ struct CosmosWidget : ModuleWidget {
 		addParam(createParamCentered<CosmosPad>(mm2px(Vec(6.47, 64.318)), module, Cosmos::PAD_X_PARAM));
 		addParam(createParamCentered<CosmosPad>(mm2px(Vec(64.275, 64.318)), module, Cosmos::PAD_Y_PARAM));
 
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(17.67, 64.347)), module, Cosmos::X_INPUT));
-		addInput(createInputCentered<PJ301MPort>(mm2px(Vec(52.962, 64.347)), module, Cosmos::Y_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(17.67, 64.347)), module, Cosmos::X_INPUT));
+		addInput(createInputCentered<GoldPort>(mm2px(Vec(52.962, 64.347)), module, Cosmos::Y_INPUT));
 
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.677, 14.23)), module, Cosmos::XOR_GATE_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.981, 14.22)), module, Cosmos::XOR_TRIG_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(35.329, 21.201)), module, Cosmos::XOR_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.428, 26.725)), module, Cosmos::OR_GATE_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.23, 26.725)), module, Cosmos::AND_GATE_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.67, 39.245)), module, Cosmos::OR_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.986, 39.245)), module, Cosmos::AND_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(35.329, 46.26)), module, Cosmos::SUM_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.44, 51.775)), module, Cosmos::OR_TRIG_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(24.889, 51.775)), module, Cosmos::X_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(45.757, 51.775)), module, Cosmos::Y_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.206, 51.775)), module, Cosmos::AND_TRIG_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.453, 76.816)), module, Cosmos::NOR_TRIG_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(24.902, 76.816)), module, Cosmos::INV_X_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(45.769, 76.816)), module, Cosmos::INV_Y_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.218, 76.816)), module, Cosmos::NAND_TRIG_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(35.329, 82.331)), module, Cosmos::DIFF_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.672, 89.346)), module, Cosmos::NOR_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.989, 89.346)), module, Cosmos::NAND_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(10.428, 101.866)), module, Cosmos::NOR_GATE_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(60.23, 101.865)), module, Cosmos::NAND_GATE_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(35.329, 107.39)), module, Cosmos::XNOR_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(17.677, 114.371)), module, Cosmos::XNOR_GATE_OUTPUT));
-		addOutput(createOutputCentered<PJ301MPort>(mm2px(Vec(52.981, 114.361)), module, Cosmos::XNOR_TRIG_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(17.677, 14.23)), module, Cosmos::XOR_GATE_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(52.981, 14.22)), module, Cosmos::XOR_TRIG_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(35.329, 21.201)), module, Cosmos::XOR_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(10.428, 26.725)), module, Cosmos::OR_GATE_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(60.23, 26.725)), module, Cosmos::AND_GATE_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(17.67, 39.245)), module, Cosmos::OR_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(52.986, 39.245)), module, Cosmos::AND_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(35.329, 46.26)), module, Cosmos::SUM_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(10.44, 51.775)), module, Cosmos::OR_TRIG_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(24.889, 51.775)), module, Cosmos::X_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(45.757, 51.775)), module, Cosmos::Y_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(60.206, 51.775)), module, Cosmos::AND_TRIG_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(10.453, 76.816)), module, Cosmos::NOR_TRIG_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(24.902, 76.816)), module, Cosmos::INV_X_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(45.769, 76.816)), module, Cosmos::INV_Y_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(60.218, 76.816)), module, Cosmos::NAND_TRIG_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(35.329, 82.331)), module, Cosmos::DIFF_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(17.672, 89.346)), module, Cosmos::NOR_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(52.989, 89.346)), module, Cosmos::NAND_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(10.428, 101.866)), module, Cosmos::NOR_GATE_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(60.23, 101.865)), module, Cosmos::NAND_GATE_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(35.329, 107.39)), module, Cosmos::XNOR_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(17.677, 114.371)), module, Cosmos::XNOR_GATE_OUTPUT));
+		addOutput(createOutputCentered<GoldPort>(mm2px(Vec(52.981, 114.361)), module, Cosmos::XNOR_TRIG_OUTPUT));
 
 		addChild(createLightCentered<CosmosLedXor>(mm2px(Vec(35.331, 29.793)), module, Cosmos::XOR_LIGHT));
 		addChild(createLightCentered<CosmosLedOr>(mm2px(Vec(26.279, 39.23)), module, Cosmos::OR_LIGHT));
