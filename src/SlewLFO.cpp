@@ -35,7 +35,7 @@ struct SlewLFO : Module {
 		configParam(FALL_PARAM, 0.f, 1.f, 0.f, "Fall");
 		configSwitch(MODE_PARAM, 0.f, 1.f, 0.f, "Mode", {"LFO", "Slew"});
 		configSwitch(RATE_PARAM, 0.f, 1.f, 0.f, "Rate", {"Slow", "Fast"});
-		configParam(CAPACITOR_PARAM, 0.f, 1.f, 0.f, "Capacitor");
+		configSwitch(CAPACITOR_PARAM, 0.f, 1.f, 0.f, "Capacitor", {"None", "1uF"});
 		configInput(RISE_INPUT, "Rise CV");
 		configInput(FALL_INPUT, "Fall CV");
 		configInput(IN_INPUT, "In");
@@ -45,7 +45,7 @@ struct SlewLFO : Module {
 	float_4 out[4] = {};
 	float_4 phases[4] = {};
 	float_4 states[4] = {}; 	// 0 rising, 1 falling
-	
+
 	void process(const ProcessArgs& args) override {
 
 		float_4 in[4] = {};
@@ -118,8 +118,6 @@ struct SlewLFO : Module {
 		lights[firstLightId + 1].setBrightnessSmooth(value > 0 ? +value / 10.f : 0.f, deltaTime);	// green
 		lights[firstLightId + 2].setBrightness(0.f);												// blue
 	}
-
-	
 };
 
 struct SlewInLed : BlackNoiseLed {
@@ -131,6 +129,12 @@ struct SlewInLed : BlackNoiseLed {
 struct SlewOutLed : BlackNoiseLed {
 	SlewOutLed() {
 		this->setSvg(Svg::load(asset::plugin(pluginInstance, "res/components/slew_out.svg")));
+	}
+};
+
+struct CapacitorPanel : SvgSwitch {
+	CapacitorPanel() {
+		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/slew_cap.svg")));
 	}
 };
 
@@ -147,7 +151,7 @@ struct SlewLFOWidget : ModuleWidget {
 		addParam(createParamCentered<HexnutKnobBlack>(mm2px(Vec(10.14, 63.247)), module, SlewLFO::FALL_PARAM));
 		addParam(createParamCentered<DoepferSwitch>(mm2px(Vec(5.133, 80.944)), module, SlewLFO::MODE_PARAM));
 		addParam(createParamCentered<DoepferSwitch>(mm2px(Vec(15.197, 80.944)), module, SlewLFO::RATE_PARAM));
-		addParam(createParamCentered<VCVButton>(mm2px(Vec(10.147, 103.259)), module, SlewLFO::CAPACITOR_PARAM));
+		addParam(createParamCentered<CapacitorPanel>(mm2px(Vec(10.147, 103.259)), module, SlewLFO::CAPACITOR_PARAM));
 
 		addInput(createInputCentered<GoldPort>(mm2px(Vec(5.072, 95.296)), module, SlewLFO::RISE_INPUT));
 		addInput(createInputCentered<GoldPort>(mm2px(Vec(15.124, 95.296)), module, SlewLFO::FALL_INPUT));

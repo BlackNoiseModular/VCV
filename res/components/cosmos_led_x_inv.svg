@@ -7,7 +7,7 @@
    viewBox="0 0 4.9938464 5.0141158"
    version="1.1"
    id="svg6699"
-   inkscape:version="1.2.1 (9c6d41e, 2022-07-14)"
+   inkscape:version="1.3.2 (091e20e, 2023-11-25)"
    sodipodi:docname="cosmos_led_x_inv.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
@@ -24,10 +24,10 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      showgrid="false"
-     inkscape:zoom="0.914906"
-     inkscape:cx="-120.77743"
-     inkscape:cy="430.09883"
-     inkscape:window-width="1390"
+     inkscape:zoom="7.319248"
+     inkscape:cx="4.781912"
+     inkscape:cy="37.845418"
+     inkscape:window-width="1392"
      inkscape:window-height="1205"
      inkscape:window-x="0"
      inkscape:window-y="25"
@@ -44,18 +44,6 @@
        id="g294"
        transform="matrix(0.33866667,0,0,0.33866667,29.545243,-31.544394)"
        style="fill:#4d4d4d">
-      <path
-         d="m 86.72911,211.29667 c 0.07845,0 0.15435,-0.01 0.23203,-0.0117 h -0.46406 c 0.07768,0.002 0.15358,0.0117 0.23203,0.0117 z"
-         fill="#ffffff"
-         stroke-width="0"
-         id="path274"
-         style="fill:#4d4d4d" />
-      <path
-         d="m 86.72911,196.49121 c -0.07997,0 -0.15766,0.009 -0.23712,0.0117 h 0.47424 c -0.07947,-0.003 -0.15715,-0.0117 -0.23712,-0.0117 z"
-         fill="#ffffff"
-         stroke-width="0"
-         id="path276"
-         style="fill:#4d4d4d" />
       <path
          d="m 86.96623,196.50292 h -0.47424 c -1.57657,0.0504 -3.02553,0.59191 -4.20401,1.47876 h 8.88251 c -1.17873,-0.88685 -2.6277,-1.42833 -4.20426,-1.47876 z"
          fill="#ffffff"
