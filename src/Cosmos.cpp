@@ -102,7 +102,7 @@ struct Cosmos : Module {
 
 		configOutput(XOR_GATE_OUTPUT, "XOR gate");
 		configOutput(XOR_TRIG_OUTPUT, "XOR trigger");
-		configOutput(XOR_OUTPUT, "Through-zero clipper");
+		configOutput(XOR_OUTPUT, "XOR (through-zero clipper)");
 		configOutput(OR_GATE_OUTPUT, "OR gate");
 		configOutput(AND_GATE_OUTPUT, "AND gate");
 		configOutput(OR_OUTPUT, "OR (maximum)");
@@ -121,7 +121,7 @@ struct Cosmos : Module {
 		configOutput(NAND_OUTPUT, "NAND (minimum inverted)");
 		configOutput(NOR_GATE_OUTPUT, "NOR gate");
 		configOutput(NAND_GATE_OUTPUT, "NAND gate");
-		configOutput(XNOR_OUTPUT, "Ternary clipper (inverted)");
+		configOutput(XNOR_OUTPUT, "XNOR (inverted through-zero clipper)");
 		configOutput(XNOR_GATE_OUTPUT, "XNOR gate");
 		configOutput(XNOR_TRIG_OUTPUT, "XNOR trigger");
 
