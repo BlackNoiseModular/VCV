@@ -95,7 +95,7 @@ struct Cosmos : Module {
 		configParam(PAD_Y_PARAM, 0.f, 1.f, 0.f, "Pad Y");
 
 		thresholdTrimmerQuantity = configParam(THRESHOLD_PARAM, .0f, 2.f, 1.f, "Gate/trigger threshold", "V");
-		pressureMaxQuantity = configParam(PRESSURE_PARAM, .0f, 5.f, 1.f, "Pad max presssure", "V");
+		pressureMaxQuantity = configParam(PRESSURE_PARAM, .0f, 10.f, 5.f, "Pad max presssure", "V");
 
 		configInput(X_INPUT, "X");
 		configInput(Y_INPUT, "Y");

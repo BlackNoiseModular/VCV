@@ -149,8 +149,8 @@ struct GomaII : Module {
 
 				activeSum[c / 4] += inputs[EXT_INPUT + m].getNormalPolyVoltageSimd<float_4>(normalledVoltageValue, c) * gain;
 
+				outputs[EXT_OUTPUT + m].setVoltageSimd<float_4>(activeSum[c / 4], c);
 				if (outputs[EXT_OUTPUT + m].isConnected()) {
-					outputs[EXT_OUTPUT + m].setVoltageSimd<float_4>(activeSum[c / 4], c);
 					activeSum[c / 4] = 0.f;
 				}
 			}
@@ -158,7 +158,7 @@ struct GomaII : Module {
 			outputs[EXT_OUTPUT + m].setChannels(numActivePolyphonyChannels);
 
 			if (numActivePolyphonyChannels == 1) {
-				setRedGreenLED(EXT_LIGHT + 3 * m, inputs[EXT_INPUT + m].getNormalVoltage(normalledVoltageValue[0]) * gain, args.sampleTime);
+				setRedGreenLED(EXT_LIGHT + 3 * m, outputs[EXT_INPUT + m].getVoltageSimd<float_4>(0)[0] * gain, args.sampleTime);
 			}
 		}
 

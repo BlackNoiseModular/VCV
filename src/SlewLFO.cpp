@@ -35,7 +35,7 @@ struct SlewLFO : Module {
 		configParam(FALL_PARAM, 0.f, 1.f, 0.f, "Fall");
 		configSwitch(MODE_PARAM, 0.f, 1.f, 0.f, "Mode", {"LFO", "Slew"});
 		configSwitch(RATE_PARAM, 0.f, 1.f, 0.f, "Rate", {"Slow", "Fast"});
-		configSwitch(CAPACITOR_PARAM, 0.f, 1.f, 0.f, "Capacitor", {"None", "1uF"});
+		configSwitch(CAPACITOR_PARAM, 0.f, 2.f, 0.f, "Capacitor", {"None", "10uF (slow)", "100uF (sloooow)"});
 		configInput(RISE_INPUT, "Rise CV");
 		configInput(FALL_INPUT, "Fall CV");
 		configInput(IN_INPUT, "In");
@@ -134,7 +134,9 @@ struct SlewOutLed : BlackNoiseLed {
 
 struct CapacitorPanel : SvgSwitch {
 	CapacitorPanel() {
-		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/slew_cap.svg")));
+		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/slew_cap_0.svg")));
+		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/slew_cap_1.svg")));
+		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/slew_cap_2.svg")));
 	}
 };
 
