@@ -7,14 +7,19 @@ License: GPL-3.0-or-later
 
 ## Screenshots
 
-TODO
+<img src="./Screenshot.png" style="max-width: 100%;">
 
 
 ## Differences with hardware
 
 We have tried to make the VCV implementations as authentic as possible, however there are some minor changes that have been made (either for usuability or to bring modules in line with VCV rack conventions and standards).
 
-* TODO: Polyphony, touch pads, other?
+General
+* Polyphony: COSMOS, SlewLFO and GOMA II are polyphonic in VCV!
+
+SlewLFO
+* In LFO mode, the effect of the curve knob is rather minimal, whereas in the VCV version it has a similar response to the slew mode
+* (Minor) On hardware, the input LED can display the voltage at input jack even if not used (e.g. in LFO mode)
 
 ## Source repo for hardware versions
 

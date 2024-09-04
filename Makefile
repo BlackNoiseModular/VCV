@@ -22,5 +22,7 @@ DISTRIBUTABLES += $(wildcard presets)
 # Include the Rack plugin Makefile framework
 include $(RACK_DIR)/plugin.mk
 
+CXXFLAGS += -std=c++17
+
 # to compile in debug mode
 # CXXFLAGS += -g -O0

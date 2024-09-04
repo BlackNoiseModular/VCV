@@ -27,90 +27,151 @@ struct SlewLFO : Module {
 		ENUMS(OUT_LIGHT, 3),
 		LIGHTS_LEN
 	};
+	enum CapacitorModifier {
+		CAP_NONE,
+		CAP_SLOW,
+		CAP_SLOOOOW
+	};
+	enum RateMode {
+		SLOW,
+		FAST
+	};
+	enum SlewLFOMode {
+		LFO,
+		SLEW
+	};
 
 	SlewLFO() {
 		config(PARAMS_LEN, INPUTS_LEN, OUTPUTS_LEN, LIGHTS_LEN);
-		configParam(CURVE_PARAM, 0.f, 1.f, 0.f, "Curve");
-		configParam(RISE_PARAM, 0.f, 1.f, 0.f, "Rise");
-		configParam(FALL_PARAM, 0.f, 1.f, 0.f, "Fall");
+		configParam(CURVE_PARAM, 0.f, 1.f, 1.f, "Curve");
+		configParam(RISE_PARAM, 0.f, 1.f, 0.5f, "Rise");
+		configParam(FALL_PARAM, 0.f, 1.f, 0.5f, "Fall");
 		configSwitch(MODE_PARAM, 0.f, 1.f, 0.f, "Mode", {"LFO", "Slew"});
 		configSwitch(RATE_PARAM, 0.f, 1.f, 0.f, "Rate", {"Slow", "Fast"});
-		configSwitch(CAPACITOR_PARAM, 0.f, 2.f, 0.f, "Capacitor", {"None", "10uF (slow)", "100uF (sloooow)"});
+		configSwitch(CAPACITOR_PARAM, CAP_NONE, CAP_SLOOOOW, CAP_NONE, "Capacitor", {"None", "10uF (slow)", "100uF (sloooow)"});
 		configInput(RISE_INPUT, "Rise CV");
 		configInput(FALL_INPUT, "Fall CV");
 		configInput(IN_INPUT, "In");
 		configOutput(OUT_OUTPUT, "Out");
 	}
 
-	float_4 out[4] = {};
-	float_4 phases[4] = {};
-	float_4 states[4] = {}; 	// 0 rising, 1 falling
+	inline double crossfade(double a, double b, double p) {
+		return a + (b - a) * p;
+	}
+
+	double out[PORT_MAX_CHANNELS] = {};
+	double phase[PORT_MAX_CHANNELS] = {};
+	bool state[PORT_MAX_CHANNELS] = {}; // false = rise, true = fall
+
+	std::pair<double, double> getMinMaxSlewRates() {
+		const CapacitorModifier capacitor = static_cast<CapacitorModifier>(params[CAPACITOR_PARAM].getValue());
+		const RateMode rate = static_cast<RateMode>(params[RATE_PARAM].getValue());
+
+		double slowestTime, fastestTime;
+		switch (capacitor) {
+			default:
+			case CAP_NONE:
+				if (rate == SLOW) {
+					// slow: min 8s to 10V, max 8ms to 10V
+					slowestTime = 8.; 		// 0.0625 Hz
+					fastestTime = 0.008; 	// 62.5 Hz
+				}
+				else {
+					// fast: min 200ms to 10V, max 120us to 10V
+					slowestTime = 200e-3;	// 2.5 Hz
+					fastestTime = 200e-6; 	// 2500 Hz
+				}
+				break;
+			case CAP_SLOW:
+				slowestTime = 20 * 60; 	// 20 minutes
+				fastestTime = 1.2;		// 1.2 seconds
+				break;
+			case CAP_SLOOOOW:
+				slowestTime = 33 * 60 * 60; 	// 33 hours
+				fastestTime = 2 * 60; 			// 2 minutes
+				break;
+		}
+
+		// rates are in volts per second, with rate being effectively time to reach 10V
+		return {10. / slowestTime, 10. / fastestTime};
+	}
 
 	void process(const ProcessArgs& args) override {
 
-		float_4 in[4] = {};
-		float_4 riseCV[4] = {};
-		float_4 fallCV[4] = {};
+
+		// minimum and maximum slopes in volts per second
+		const auto [slewMin, slewMax] = getMinMaxSlewRates();
+		// Amount of extra slew per voltage difference
+		const double shapeScale = 1 / 10.;
+		const double shape = (1 - params[CURVE_PARAM].getValue()) * 0.998;
+
+		const double param_rise = params[RISE_PARAM].getValue() * 10.;
+		const double param_fall = params[FALL_PARAM].getValue() * 10.;
 
 		// this is the number of active polyphony engines, defined by the input
 		const int numPolyphonyEngines = std::max({1, inputs[IN_INPUT].getChannels(), inputs[RISE_INPUT].getChannels(), inputs[FALL_INPUT].getChannels()});
 
-		// minimum and maximum slopes in volts per second
-		const float slewMin = (params[RATE_PARAM].getValue()) ? 10.f / 120e-3 : 10.f / 12; 		// slow: 12s to 10V, fast: 120ms to 10V
-		const float slewMax = (params[RATE_PARAM].getValue()) ? 10.f / 120e-6 : 10.f / 12e-3; 	// slow: 12 ms to 10V, fast: 120us to 10V
-		// Amount of extra slew per voltage difference
-		const float shapeScale = 1 / 10.f;
-		const float shape = (1 - params[CURVE_PARAM].getValue()) * 0.998;
-
-		const float_4 param_rise = params[RISE_PARAM].getValue() * 10.f;
-		const float_4 param_fall = params[FALL_PARAM].getValue() * 10.f;
+		const SlewLFOMode mode = static_cast<SlewLFOMode>(params[MODE_PARAM].getValue());
 
 		outputs[OUT_OUTPUT].setChannels(numPolyphonyEngines);
 
-		for (int c = 0; c < numPolyphonyEngines; c += 4) {
-			if (params[MODE_PARAM].getValue()) {
-				in[c / 4] = inputs[IN_INPUT].getVoltageSimd<float_4>(c);
-			}
-			else {
-				states[c / 4] = ifelse(out[c / 4] >= 10.f, float_4::mask(), states[c / 4]);
-				states[c / 4] = ifelse(out[c / 4] <= 0.f, 0.f, states[c / 4]);
-				in[c / 4] = ifelse(states[c / 4], 0.f, 10.f);
+		for (int c = 0; c < numPolyphonyEngines; c++) {
+
+			double in;
+			switch (mode) {
+				case SLEW:	{
+					in = inputs[IN_INPUT].getPolyVoltage(c);
+					break;
+				}
+				case LFO: {
+					state[c] = out[c] >= 10. ? true : state[c];
+					state[c] = out[c] <= 0. ? false : state[c];
+					in = state[c] ? 0. : 10.;
+					break;
+				}
 			}
 
-
+			double riseCV = 0.0, fallCV = 0.0;
 			if (inputs[RISE_INPUT].isConnected()) {
-				riseCV[c / 4] = inputs[RISE_INPUT].getPolyVoltageSimd<float_4>(c);
+				riseCV = inputs[RISE_INPUT].getPolyVoltage(c);
 			}
 			if (inputs[FALL_INPUT].isConnected()) {
-				fallCV[c / 4] = inputs[FALL_INPUT].getPolyVoltageSimd<float_4>(c);
+				fallCV = inputs[FALL_INPUT].getPolyVoltage(c);
 			}
 
-			riseCV[c / 4] += param_rise;
-			fallCV[c / 4] += param_fall;
+			riseCV += param_rise;
+			fallCV += param_fall;
 
-			float_4 delta = in[c / 4] - out[c / 4];
-			float_4 delta_gt_0 = delta > 0.f;
-			float_4 delta_lt_0 = delta < 0.f;
+			double delta = in - out[c];
+			double rateCV = 0.0;
+			if (delta > 0.0) {
+				rateCV = riseCV;
+			}
+			else if (delta < 0.0) {
+				rateCV = fallCV;
+			}
+			rateCV *= 0.1;
 
-			float_4 rateCV = {};
-			rateCV = ifelse(delta_gt_0, riseCV[c / 4], 0.f);
-			rateCV = ifelse(delta_lt_0, fallCV[c / 4], rateCV) * 0.1f;
+			double pm_one = (delta > 0) - (delta < 0);
+			double slew = slewMax * std::pow(slewMin / slewMax, rateCV);
 
-			float_4 pm_one = simd::sgn(delta);
-			float_4 slew = slewMax * simd::pow(slewMin / slewMax, rateCV);
+			double diff = slew * crossfade(pm_one, shapeScale * delta, shape) * args.sampleTime;
 
-			out[c / 4] += slew * simd::crossfade(pm_one, shapeScale * delta, shape) * args.sampleTime;
-			out[c / 4] = ifelse(delta_gt_0 & (out[c / 4] > in[c / 4]), in[c / 4], out[c / 4]);
-			out[c / 4] = ifelse(delta_lt_0 & (out[c / 4] < in[c / 4]), in[c / 4], out[c / 4]);
+			out[c] += diff;
+			out[c] = (delta > 0 && (out[c] > in)) ? in : out[c];
+			out[c] = (delta < 0 && (out[c] < in)) ? in : out[c];
 
-			outputs[OUT_OUTPUT].setVoltageSimd(out[c / 4], c);
+			outputs[OUT_OUTPUT].setVoltage(out[c], c);
 		}
 
-		if (inputs[IN_INPUT].isConnected()) {
-			setRedGreenLED(IN_LIGHT, in[0][0], args.sampleTime);
+		if (inputs[IN_INPUT].isConnected() && mode == SLEW) {
+			const float in = inputs[IN_INPUT].getVoltage();
+			setRedGreenLED(IN_LIGHT, in, args.sampleTime);
 		}
-		setRedGreenLED(OUT_LIGHT, out[0][0], args.sampleTime);
-
+		else {
+			setRedGreenLED(IN_LIGHT, 0., args.sampleTime);
+		}
+		setRedGreenLED(OUT_LIGHT, out[0], args.sampleTime);
 	}
 
 	void setRedGreenLED(int firstLightId, float value, float deltaTime) {
