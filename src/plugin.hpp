@@ -79,6 +79,7 @@ struct DoepferSwitch : app::SvgSwitch {
 	DoepferSwitch() {
 		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/switch_0.svg")));
 		addFrame(Svg::load(asset::plugin(pluginInstance, "res/components/switch_1.svg")));
+		this->shadow->opacity = 0.0f;
 	}
 };
 
