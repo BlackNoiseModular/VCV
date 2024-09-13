@@ -78,16 +78,35 @@ struct GomaII : Module {
 		updateCounter.setDivision(32);
 	}
 
-	std::vector<int> getPolyphonyStatus(int expanderPolyphonyChannels) {
-		std::vector<int> result;
+	void onReset(const ResetEvent& e) override {
+		Module::onReset(e);
+
+		// gain knobs default values depend on mode
+		updateKnobSettingsForMode();
+
+		for (int m = 0; m < 4; m++) {
+			params[GAIN_EXT_PARAM + m].setValue(getParamQuantity(GAIN_EXT_PARAM + m)->defaultValue);
+		}
+	}
+
+	void updateKnobSettingsForMode() {
+		for (int m = 0; m < 4; m++) {
+			getParamQuantity(GAIN_EXT_PARAM + m)->displayOffset = params[MODE_EXT_PARAM + m].getValue() ? 0.f : -100.f;
+			getParamQuantity(GAIN_EXT_PARAM + m)->displayMultiplier = params[MODE_EXT_PARAM + m].getValue() ? 100.f : 200.f;
+			getParamQuantity(GAIN_EXT_PARAM + m)->defaultValue = params[MODE_EXT_PARAM + m].getValue() ? 0.f : 0.5f;
+		}
+	}
+
+	int polyphonyStatus[4] = {1, 1, 1, 1};
+	void updatePolyphonyStatus(int expanderPolyphonyChannels) {
+
 		for (int i = 0; i < 4; i++) {
 			if (i == 0) {
-				result.push_back(std::max({1, inputs[EXT_INPUT + i].getChannels(), expanderPolyphonyChannels}));
+				polyphonyStatus[i] = std::max({1, inputs[EXT_INPUT + i].getChannels(), expanderPolyphonyChannels});
 			}
 			else {
-				result.push_back(std::max(1, inputs[EXT_INPUT + i].getChannels()));
+				polyphonyStatus[i] = std::max(1, inputs[EXT_INPUT + i].getChannels());
 			}
-
 		}
 
 		for (int i = 0; i < 4; i++) {
@@ -96,15 +115,13 @@ struct GomaII : Module {
 			}
 
 			for (int j = i + 1; j < 4; j++) {
-				result[j] = result[i] = std::max(result[i], result[j]);
+				polyphonyStatus[j] = polyphonyStatus[i] = std::max(polyphonyStatus[i], polyphonyStatus[j]);
 
 				if (outputs[EXT_OUTPUT + j].isConnected()) {
 					break;
 				}
 			}
 		}
-
-		return result;
 	}
 
 	void process(const ProcessArgs& args) override {
@@ -112,13 +129,8 @@ struct GomaII : Module {
 
 		// only need to do rarely, but update gain label based on whether we are in attenuator mode or attenuverter mode
 		if (updateCounter.process()) {
-			for (int m = 0; m < 4; m++) {
-				getParamQuantity(GAIN_EXT_PARAM + m)->displayOffset = params[MODE_EXT_PARAM + m].getValue() ? 0.f : -100.f;
-				getParamQuantity(GAIN_EXT_PARAM + m)->displayMultiplier = params[MODE_EXT_PARAM + m].getValue() ? 100.f : 200.f;
-				getParamQuantity(GAIN_EXT_PARAM + m)->defaultValue = params[MODE_EXT_PARAM + m].getValue() ? 0.f : 0.5f;
-			}
+			updateKnobSettingsForMode();
 		}
-
 
 		const float_4 normalledVoltageValue = (normalledVoltage == NORMALLED_5V) ? 5.f : 10.f;
 
@@ -135,7 +147,7 @@ struct GomaII : Module {
 			}
 			numExpanderPolyphonyChannels = leftExpanderData->numActivePolyphonyChannels;
 		}
-		const std::vector<int> polyphonyStatus = getPolyphonyStatus(numExpanderPolyphonyChannels);
+		updatePolyphonyStatus(numExpanderPolyphonyChannels);
 
 		// loop over the four mixer channels (ext, ch1, ch2, ch3)
 		for (int m = 0; m < 4; m++) {

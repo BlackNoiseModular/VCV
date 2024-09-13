@@ -48,7 +48,8 @@ struct SlewLFO : Module {
 		configParam(FALL_PARAM, 0.f, 1.f, 0.5f, "Fall");
 		configSwitch(MODE_PARAM, 0.f, 1.f, 0.f, "Mode", {"LFO", "Slew"});
 		configSwitch(RATE_PARAM, 0.f, 1.f, 0.f, "Rate", {"Slow", "Fast"});
-		configSwitch(CAPACITOR_PARAM, CAP_NONE, CAP_SLOOOOW, CAP_NONE, "Capacitor", {"None", "10uF (slow)", "100uF (sloooow)"});
+		auto capacitorExpander = configSwitch(CAPACITOR_PARAM, CAP_NONE, CAP_SLOOOOW, CAP_NONE, "Capacitor Expander", {"None", "Slow (~10uF)", "Sloooow (~100uF)"});
+		capacitorExpander->description = "The capacitor expander allows the user to add their own capacitor to modify the slew rate.";
 		configInput(RISE_INPUT, "Rise CV");
 		configInput(FALL_INPUT, "Fall CV");
 		configInput(IN_INPUT, "In");
