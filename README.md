@@ -14,6 +14,7 @@ General
 
 SlewLFO
 * In LFO mode, the effect of the curve knob is rather minimal, whereas in the VCV version it has a similar response to the slew mode
+* In LFO mode _and_ fast mode, the audio rate waveform is by default centred to run -5 → +5V (i.e. no DC component) rather than the usual 0 → 10V - this can be disabled in the context menu if need be. 
 * (Minor) On hardware, the input LED can display the voltage at input jack even if not used (e.g. in LFO mode)
 
 ## Source repo for hardware versions
