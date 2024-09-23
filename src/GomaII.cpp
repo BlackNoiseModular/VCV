@@ -75,7 +75,7 @@ struct GomaII : Module {
 		getLeftExpander().producerMessage = &value[0];
 		getLeftExpander().consumerMessage = &value[1];
 
-		updateCounter.setDivision(32);
+		updateCounter.setDivision(128);
 	}
 
 	void onReset(const ResetEvent& e) override {

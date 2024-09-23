@@ -62,6 +62,8 @@ struct SlewLFO : Module {
 
 		// calculate up/downsampling rates
 		onSampleRateChange();
+
+		updateCounter.setDivision(128);
 	}
 
 	void onSampleRateChange() override {
@@ -72,6 +74,23 @@ struct SlewLFO : Module {
 		}
 	}
 
+	void updateKnobSettingsForMode(SlewLFOMode mode) {
+		getParamQuantity(RISE_PARAM)->defaultValue = mode == LFO ? 0.5f : 0.0f;
+		getParamQuantity(FALL_PARAM)->defaultValue = mode == LFO ? 0.5f : 0.0f;
+	}
+
+	void onReset(const ResetEvent& e) override {
+		Module::onReset(e);
+
+		const SlewLFOMode mode = static_cast<SlewLFOMode>(params[MODE_PARAM].getValue());
+
+		// rise/fall knobs default values depend on mode
+		updateKnobSettingsForMode(mode);
+
+		params[RISE_PARAM].setValue(getParamQuantity(RISE_PARAM)->defaultValue);
+		params[FALL_PARAM].setValue(getParamQuantity(FALL_PARAM)->defaultValue);
+	}
+
 	inline double crossfade(double a, double b, double p) {
 		return a + (b - a) * p;
 	}
@@ -80,6 +99,7 @@ struct SlewLFO : Module {
 	chowdsp::VariableOversampling<6, double> oversampler[PORT_MAX_CHANNELS]; 	// uses a 2*6=12th order Butterworth filter
 	int oversamplingIndex = 2; 	// default is 2^oversamplingIndex == x4 oversampling
 	bool removeDCAtAudioRates = true;
+	dsp::ClockDivider updateCounter;
 
 	double out[PORT_MAX_CHANNELS] = {};
 	double phase[PORT_MAX_CHANNELS] = {};
@@ -121,12 +141,12 @@ struct SlewLFO : Module {
 		// minimum and maximum slopes in volts per second
 		const RateMode rate = static_cast<RateMode>(params[RATE_PARAM].getValue());
 		const CapacitorModifier capacitor = static_cast<CapacitorModifier>(params[CAPACITOR_PARAM].getValue());
+		const SlewLFOMode mode = static_cast<SlewLFOMode>(params[MODE_PARAM].getValue());
 
 		const auto [slewMin, slewMax] = getMinMaxSlewRates(rate, capacitor);
 		// Amount of extra slew per voltage difference
 		const double shapeScale = 1 / 10.;
 		const double shape = (1 - params[CURVE_PARAM].getValue()) * 0.998;
-
 
 		const double param_rise = params[RISE_PARAM].getValue() * 10.;
 		const double param_fall = params[FALL_PARAM].getValue() * 10.;
@@ -141,7 +161,10 @@ struct SlewLFO : Module {
 		const int oversampleRatioMain = (rate == FAST) ? oversamplingRatio : 1;
 		const double sampleTimeOversample = args.sampleTime / oversampleRatioMain;
 
-		const SlewLFOMode mode = static_cast<SlewLFOMode>(params[MODE_PARAM].getValue());
+		// only need to do rarely, but update rise/fall defaults based on mode
+		if (updateCounter.process()) {
+			updateKnobSettingsForMode(mode);
+		}
 
 
 		for (int c = 0; c < numPolyphonyEngines; c++) {
