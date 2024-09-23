@@ -169,8 +169,13 @@ struct GomaII : Module {
 
 			outputs[EXT_OUTPUT + m].setChannels(numActivePolyphonyChannels);
 
-			if (numActivePolyphonyChannels == 1) {
-				setRedGreenLED(EXT_LIGHT + 3 * m, outputs[EXT_INPUT + m].getVoltageSimd<float_4>(0)[0] * gain, args.sampleTime);
+			if (numActivePolyphonyChannels > 1) {
+				lights[EXT_LIGHT + 3 * m + 0].setBrightness(0.f);
+				lights[EXT_LIGHT + 3 * m + 1].setBrightness(0.f);
+				lights[EXT_LIGHT + 3 * m + 2].setBrightness(1.f);
+			}
+			else {
+				setRedGreenLED(EXT_LIGHT + 3 * m, outputs[EXT_INPUT + m].getVoltageSimd<float_4>(0)[0], args.sampleTime);
 			}
 		}
 

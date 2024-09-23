@@ -78,11 +78,13 @@ struct Cosmos : Module {
 	dsp::BooleanTrigger yButtonTrigger;
 
 	// oversampling
-	chowdsp::VariableOversampling<6, float_4> oversampler[OUTPUTS_LEN][4]; 	// uses a 2*6=12th order Butterworth filter
+	chowdsp::VariableOversampling<6, float_4> oversampler[OUTPUTS_LEN][PORT_MAX_CHANNELS / 4]; 	// uses a 2*6=12th order Butterworth filter
 	int oversamplingIndex = 2; 	// default is 2^oversamplingIndex == x4 oversampling
 	bool oversampleLogicOutputs = true;
 	bool oversampleLogicGateOutputs = false;
 	bool oversampleLogicTriggerOutputs = false;
+
+	bool clip10V = true;
 
 	ParamQuantity* thresholdTrimmerQuantity{};
 	ParamQuantity* pressureMaxQuantity{};
@@ -131,10 +133,10 @@ struct Cosmos : Module {
 
 	void onSampleRateChange() override {
 		float sampleRate = APP->engine->getSampleRate();
-		for (int c = 0; c < OUTPUTS_LEN; c++) {
-			for (int i = 0; i < 4; i++) {
-				oversampler[c][i].setOversamplingIndex(oversamplingIndex);
-				oversampler[c][i].reset(sampleRate);
+		for (int outputId = 0; outputId < OUTPUTS_LEN; outputId++) {
+			for (int c = 0; c < PORT_MAX_CHANNELS; c += 4) {
+				oversampler[outputId][c / 4].setOversamplingIndex(oversamplingIndex);
+				oversampler[outputId][c / 4].reset(sampleRate);
 			}
 		}
 	}
@@ -182,11 +184,11 @@ struct Cosmos : Module {
 			outputs[DIFF_OUTPUT].setVoltageSimd<float_4>(0.5 * (x - y), c);
 
 			// upsampled input arrays will be stored in these
-			float_4* xBuffer = oversampler[c][X_OUTPUT].getOSBuffer();
-			float_4* yBuffer = oversampler[c][Y_OUTPUT].getOSBuffer();
+			float_4* xBuffer = oversampler[X_OUTPUT][c / 4].getOSBuffer();
+			float_4* yBuffer = oversampler[Y_OUTPUT][c / 4].getOSBuffer();
 			if (oversamplingRatio > 1) {
-				oversampler[c][X_OUTPUT].upsample(x);
-				oversampler[c][Y_OUTPUT].upsample(y);
+				oversampler[X_OUTPUT][c / 4].upsample(x);
+				oversampler[Y_OUTPUT][c / 4].upsample(y);
 			}
 			else {
 				xBuffer[0] = x;
@@ -194,9 +196,9 @@ struct Cosmos : Module {
 			}
 
 			// main logic outputs
-			float_4* orBuffer = oversampler[c][OR_OUTPUT].getOSBuffer();
-			float_4* andBuffer = oversampler[c][AND_OUTPUT].getOSBuffer();
-			float_4* xorBuffer = oversampler[c][XOR_OUTPUT].getOSBuffer();
+			float_4* orBuffer = oversampler[OR_OUTPUT][c / 4].getOSBuffer();
+			float_4* andBuffer = oversampler[AND_OUTPUT][c / 4].getOSBuffer();
+			float_4* xorBuffer = oversampler[XOR_OUTPUT][c / 4].getOSBuffer();
 			const int oversampleRatioMain = oversampleLogicOutputs ? oversamplingRatio : 1;
 			for (int i = 0; i < oversampleRatioMain; i++) {
 				const float_4 x_ = xBuffer[i];
@@ -204,31 +206,37 @@ struct Cosmos : Module {
 
 				orBuffer[i] = ifelse(x_ > y_, x_, y_);
 				andBuffer[i] = ifelse(x_ > y_, y_, x_);
-				const float_4 clip_x = ifelse(x > abs(y_), abs(y_), ifelse(x_ < -abs(y_), -abs(y_), x_));
+				const float_4 clip_x = ifelse(x_ > abs(y_), abs(y_), ifelse(x_ < -abs(y_), -abs(y_), x_));
 				xorBuffer[i] = ifelse(y_ > 0, -clip_x, clip_x);
+
+				if (clip10V) {
+					orBuffer[i] = clamp(orBuffer[i], -10.f, 10.f);
+					andBuffer[i] = clamp(andBuffer[i], -10.f, 10.f);
+					xorBuffer[i] = clamp(xorBuffer[i], -10.f, 10.f);
+				}
 			}
 
 			// calculate logic outputs regardless if their outputs are used (LEDs still need to work, and easier to leave always on)
-			const float_4 analogueOr = oversampleLogicOutputs ? oversampler[c][OR_OUTPUT].downsample() : orBuffer[0];
+			const float_4 analogueOr = oversampleLogicOutputs ? oversampler[OR_OUTPUT][c / 4].downsample() : orBuffer[0];
 			outputs[OR_OUTPUT].setVoltageSimd<float_4>(analogueOr, c);
 			const float_4 analogueNor = -analogueOr;
 			outputs[NOR_OUTPUT].setVoltageSimd<float_4>(analogueNor, c);
 
-			const float_4 analogueAnd = oversampleLogicOutputs ? oversampler[c][AND_OUTPUT].downsample() : andBuffer[0];
+			const float_4 analogueAnd = oversampleLogicOutputs ? oversampler[AND_OUTPUT][c / 4].downsample() : andBuffer[0];
 			outputs[AND_OUTPUT].setVoltageSimd<float_4>(analogueAnd, c);
 			const float_4 analogueNand = -analogueAnd;
 			outputs[NAND_OUTPUT].setVoltageSimd<float_4>(analogueNand, c);
 
-			const float_4 analogueXor = oversampleLogicOutputs ? oversampler[c][XOR_OUTPUT].downsample() : xorBuffer[0];
+			const float_4 analogueXor = oversampleLogicOutputs ? oversampler[XOR_OUTPUT][c / 4].downsample() : xorBuffer[0];
 			outputs[XOR_OUTPUT].setVoltageSimd<float_4>(analogueXor, c);
 			const float_4 analogueXnor = -analogueXor;
 			outputs[XNOR_OUTPUT].setVoltageSimd<float_4>(analogueXnor, c);
 
 
 			// gate logic outputs
-			float_4* orGateBuffer = oversampler[c][OR_GATE_OUTPUT].getOSBuffer();
-			float_4* andGateBuffer = oversampler[c][AND_GATE_OUTPUT].getOSBuffer();
-			float_4* xorGateBuffer = oversampler[c][XOR_GATE_OUTPUT].getOSBuffer();
+			float_4* orGateBuffer = oversampler[OR_GATE_OUTPUT][c / 4].getOSBuffer();
+			float_4* andGateBuffer = oversampler[AND_GATE_OUTPUT][c / 4].getOSBuffer();
+			float_4* xorGateBuffer = oversampler[XOR_GATE_OUTPUT][c / 4].getOSBuffer();
 			const int oversampleRatioGates = oversampleLogicGateOutputs ? oversamplingRatio : 1;
 			for (int i = 0; i < oversampleRatioGates; i++) {
 				orGateBuffer[i] = ifelse(orBuffer[i] > threshold, 10.f, 0.f);
@@ -239,19 +247,19 @@ struct Cosmos : Module {
 
 			// only bother with downsampling if there's an active output
 			if (outputs[OR_GATE_OUTPUT].isConnected() || outputs[NOR_GATE_OUTPUT].isConnected()) {
-				const float_4 orGateOut = oversampleLogicGateOutputs ? oversampler[c][OR_GATE_OUTPUT].downsample() : orGateBuffer[0];
+				const float_4 orGateOut = oversampleLogicGateOutputs ? oversampler[OR_GATE_OUTPUT][c / 4].downsample() : orGateBuffer[0];
 				outputs[OR_GATE_OUTPUT].setVoltageSimd<float_4>(orGateOut, c);
 				const float_4 norGateOut = 10.f - orGateOut;
 				outputs[NOR_GATE_OUTPUT].setVoltageSimd<float_4>(norGateOut, c);
 			}
 			if (outputs[AND_GATE_OUTPUT].isConnected() || outputs[NAND_GATE_OUTPUT].isConnected()) {
-				const float_4 andGateOut = oversampleLogicGateOutputs ? oversampler[c][AND_GATE_OUTPUT].downsample() : andGateBuffer[0];
+				const float_4 andGateOut = oversampleLogicGateOutputs ? oversampler[AND_GATE_OUTPUT][c / 4].downsample() : andGateBuffer[0];
 				outputs[AND_GATE_OUTPUT].setVoltageSimd<float_4>(andGateOut, c);
 				const float_4 nandGateOut = 10.f - andGateOut;
 				outputs[NAND_GATE_OUTPUT].setVoltageSimd<float_4>(nandGateOut, c);
 			}
 			if (outputs[XOR_GATE_OUTPUT].isConnected() || outputs[XNOR_GATE_OUTPUT].isConnected()) {
-				const float_4 xorGateOut = oversampleLogicGateOutputs ? oversampler[c][XOR_GATE_OUTPUT].downsample() : xorGateBuffer[0];
+				const float_4 xorGateOut = oversampleLogicGateOutputs ? oversampler[XOR_GATE_OUTPUT][c / 4].downsample() : xorGateBuffer[0];
 				outputs[XOR_GATE_OUTPUT].setVoltageSimd<float_4>(xorGateOut, c);
 				const float_4 xnorGateOut = 10.f - xorGateOut;
 				outputs[XNOR_GATE_OUTPUT].setVoltageSimd<float_4>(xnorGateOut, c);
@@ -259,12 +267,12 @@ struct Cosmos : Module {
 
 
 			// trigger outputs (derived from gates)
-			float_4* orTriggerBuffer = oversampler[c][OR_TRIG_OUTPUT].getOSBuffer();
-			float_4* norTriggerBuffer = oversampler[c][NOR_TRIG_OUTPUT].getOSBuffer();
-			float_4* andTriggerBuffer = oversampler[c][AND_TRIG_OUTPUT].getOSBuffer();
-			float_4* nandTriggerBuffer = oversampler[c][NAND_TRIG_OUTPUT].getOSBuffer();
-			float_4* xorTriggerBuffer = oversampler[c][XOR_TRIG_OUTPUT].getOSBuffer();
-			float_4* xnorTriggerBuffer = oversampler[c][XNOR_TRIG_OUTPUT].getOSBuffer();
+			float_4* orTriggerBuffer = oversampler[OR_TRIG_OUTPUT][c / 4].getOSBuffer();
+			float_4* norTriggerBuffer = oversampler[NOR_TRIG_OUTPUT][c / 4].getOSBuffer();
+			float_4* andTriggerBuffer = oversampler[AND_TRIG_OUTPUT][c / 4].getOSBuffer();
+			float_4* nandTriggerBuffer = oversampler[NAND_TRIG_OUTPUT][c / 4].getOSBuffer();
+			float_4* xorTriggerBuffer = oversampler[XOR_TRIG_OUTPUT][c / 4].getOSBuffer();
+			float_4* xnorTriggerBuffer = oversampler[XNOR_TRIG_OUTPUT][c / 4].getOSBuffer();
 			const int oversampleRatioTriggers = oversampleLogicTriggerOutputs ? oversamplingRatio : 1;
 			const float deltaTime = args.sampleTime / oversampleRatioTriggers;
 
@@ -343,7 +351,7 @@ struct Cosmos : Module {
 	void updateTriggerOutput(int outputId, int channel, float_4* buffer) {
 		if (outputs[outputId].isConnected()) {
 			// only oversample if needed
-			const float_4 triggerOut = oversampleLogicTriggerOutputs ? oversampler[channel][outputId].downsample() : buffer[0];
+			const float_4 triggerOut = oversampleLogicTriggerOutputs ? oversampler[outputId][channel / 4].downsample() : buffer[0];
 			outputs[outputId].setVoltageSimd<float_4>(triggerOut, channel);
 		}
 	}
@@ -365,6 +373,7 @@ struct Cosmos : Module {
 		json_object_set_new(rootJ, "oversampleLogicOutputs", json_boolean(oversampleLogicOutputs));
 		json_object_set_new(rootJ, "oversampleLogicGateOutputs", json_boolean(oversampleLogicGateOutputs));
 		json_object_set_new(rootJ, "oversampleLogicTriggerOutputs", json_boolean(oversampleLogicTriggerOutputs));
+		json_object_set_new(rootJ, "clip10V", json_boolean(clip10V));
 		json_object_set_new(rootJ, "oversamplingIndex", json_integer(oversampler[0][0].getOversamplingIndex()));
 
 		return rootJ;
@@ -385,6 +394,11 @@ struct Cosmos : Module {
 		json_t* oversampleLogicTriggerOutputsJ = json_object_get(rootJ, "oversampleLogicTriggerOutputs");
 		if (oversampleLogicTriggerOutputsJ) {
 			oversampleLogicTriggerOutputs = json_boolean_value(oversampleLogicTriggerOutputsJ);
+		}
+
+		json_t* clip10VJ = json_object_get(rootJ, "clip10V");
+		if (clip10VJ) {
+			clip10V = json_boolean_value(clip10VJ);
 		}
 
 		json_t* oversamplingIndexJ = json_object_get(rootJ, "oversamplingIndex");
@@ -587,19 +601,25 @@ struct CosmosWidget : ModuleWidget {
 
 		menu->addChild(createSubmenuItem("Oversampling", "",
 		[ = ](Menu * menu) {
-			menu->addChild(createIndexSubmenuItem("Oversampling",
+			menu->addChild(createIndexSubmenuItem("Oversampling rate",
 			{"Off", "x2", "x4", "x8"},
 			[ = ]() {
 				return module->oversamplingIndex;
 			},
 			[ = ](int mode) {
 				module->oversamplingIndex = mode;
+				// if oversampling is anything other than off, enable oversampling on logic outputs at least
+				if (mode > 0) {
+					module->oversampleLogicOutputs = true;
+				}
 				module->onSampleRateChange();
 			}));
 			menu->addChild(createBoolPtrMenuItem("Oversample logic outputs", "", &module->oversampleLogicOutputs));
 			menu->addChild(createBoolPtrMenuItem("Oversample logic gate outputs", "", &module->oversampleLogicGateOutputs));
 			menu->addChild(createBoolPtrMenuItem("Oversample logic trigger outputs", "", &module->oversampleLogicTriggerOutputs));
 		}));
+
+		menu->addChild(createBoolPtrMenuItem("Clip at ±10V", "", &module->clip10V));
 
 		menu->addChild(new ThresholdTrimmerSlider(module->thresholdTrimmerQuantity));
 		menu->addChild(new PressureMaxSlider(module->pressureMaxQuantity));
