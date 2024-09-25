@@ -17,6 +17,9 @@ SlewLFO
 * In LFO mode _and_ fast mode, the audio rate waveform is by default centred to run -5 → +5V (i.e. no DC component) rather than the usual 0 → 10V - this can be disabled in the context menu if need be. 
 * (Minor) On hardware, the input LED can display the voltage at input jack even if not used (e.g. in LFO mode)
 
+COSMOS
+* The module can optionally clip at ±10V (rail voltage)
+
 ## Source repo for hardware versions
 
 More information and resources for the hardware versions can be found at https://github.com/BlackNoiseModular/Eurorack
