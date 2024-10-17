@@ -60,9 +60,6 @@ struct SlewLFO : Module {
 		configInput(IN_INPUT, "In");
 		configOutput(OUT_OUTPUT, "Out");
 
-		// calculate up/downsampling rates
-		onSampleRateChange();
-
 		updateCounter.setDivision(128);
 	}
 

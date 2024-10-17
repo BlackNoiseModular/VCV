@@ -126,9 +126,6 @@ struct Cosmos : Module {
 		configOutput(XNOR_OUTPUT, "XNOR (inverted through-zero clipper)");
 		configOutput(XNOR_GATE_OUTPUT, "XNOR gate");
 		configOutput(XNOR_TRIG_OUTPUT, "XNOR trigger");
-
-		// calculate up/downsampling rates
-		onSampleRateChange();
 	}
 
 	void onSampleRateChange() override {
