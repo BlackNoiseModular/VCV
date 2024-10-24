@@ -5,6 +5,15 @@ This repo contains VCV ports of Black Noise Modular Eurorack modules. See: https
 
 License: GPL-3.0-or-later 
 
+## Manuals
+
+
+| **Module (manufacturer page)** | **Manual Link** |
+|--------|-------|
+| [COSMOS](https://blacknoisemodular.com/products/cosmos) | [User Manual](https://raw.githack.com/BlackNoiseModular/Eurorack/main/COSMOS/BLACK-NOISE_COSMOS_User-Manual_V1.pdf) |
+| [Slew/LFO](https://blacknoisemodular.com/products/slew-lfo) | [User Manual](https://raw.githack.com/BlackNoiseModular/Eurorack/main/Slew-LFO/Manual/BLACK-NOISE_SLEW-LFO-V1_User-Manual_V1.pdf) |
+| [GOMA II](https://blacknoisemodular.com/products/goma-ii) | [User Manual](https://raw.githack.com/BlackNoiseModular/Eurorack/main/GOMA%20II/BLACK-NOISE_GOMA-II_User-Manual_V1.pdf) |
+
 ## Differences with hardware
 
 We have tried to make the VCV implementations as authentic as possible, however there are some minor changes that have been made (either for usuability or to bring modules in line with VCV rack conventions and standards).
