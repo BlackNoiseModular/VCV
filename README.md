@@ -36,3 +36,9 @@ More information and resources for the hardware versions can be found at https:/
 ## Screenshots
 
 <img src="./Screenshot.png" style="max-width: 100%;">
+
+## Credits
+
+* Original module concept, design and development - @BlackNoiseModular 
+* DSP software implementation - @hemmer / [A Forest Full of Sines](https://aforestfullofsines.com/)
+* Graphical elements for VCV - @pyerbass / Pierre Collard
